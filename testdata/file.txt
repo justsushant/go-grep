@@ -1,0 +1,4 @@
+Dummy line search_
+I found the search_string in the file.
+Dummy line _string
+Another line also contains the search_string
