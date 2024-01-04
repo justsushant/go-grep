@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	// "io"
 	"io/fs"
 	"strings"
 )
@@ -15,15 +13,17 @@ var (
 	ErrIsDirectory = errors.New("is a directory")
 )
 
-func SearchString(fSys fs.FS, path string, stdin io.Reader, keyword string) ([]string, error) {
+func SearchString(fSys fs.FS, path string, stdin io.Reader, keyword string, ignoreCase bool) ([]string, error) {
 	var scanner *bufio.Scanner
 
 	if path != "" {
+		// check for validity
 		err := isValid(fSys, path)
 		if err != nil {
 			return nil, err
 		}
 
+		// open file
 		file, err := fSys.Open(path)
 		if err != nil {
 			return nil, err
@@ -35,14 +35,23 @@ func SearchString(fSys fs.FS, path string, stdin io.Reader, keyword string) ([]s
 		scanner = bufio.NewScanner(stdin)
 	}
 
+	if ignoreCase {
+		keyword = strings.ToLower(keyword)
+	}
+
 	
 	var result []string
 	scanner.Split(bufio.ScanLines)
 	for scanner.Scan() {
-		line := scanner.Text()
+		var line string
+		line = scanner.Text()
 
+		if ignoreCase {
+			line = strings.ToLower(scanner.Text())
+		}
+		
 		if strings.Contains(line, keyword) {
-			result = append(result, line)
+			result = append(result, scanner.Text())
 		}
 	}
 
@@ -50,6 +59,7 @@ func SearchString(fSys fs.FS, path string, stdin io.Reader, keyword string) ([]s
 		return nil, err
 	}
 
+	// fmt.Println(result)
 	return result, nil	
 }
 

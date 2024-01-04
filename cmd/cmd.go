@@ -10,14 +10,14 @@ import (
 	grep "github.com/one2n-go-bootcamp/grep/pkg"
 )
 
-func run(fSys fs.FS, stdin io.Reader, args []string, fileName string) string {
+func run(fSys fs.FS, stdin io.Reader, args []string, fileName string, isCaseSensitive bool) string {
 	var result []string
 	var err error
 
 	if len(args) > 1 {
-		result, err = grep.SearchString(fSys, args[1], stdin, args[0])
+		result, err = grep.SearchString(fSys, args[1], stdin, args[0], isCaseSensitive)
 	} else {
-		result, err = grep.SearchString(fSys, "", stdin, args[0])
+		result, err = grep.SearchString(fSys, "", stdin, args[0], isCaseSensitive)
 	}
 
 	if err != nil {

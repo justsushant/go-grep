@@ -24,6 +24,7 @@ import (
 
 var (
 	fileNameFlag = "fileName"
+	ignoreCaseFlag = "ignoreCase"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -36,7 +37,12 @@ var rootCmd = &cobra.Command{
 			fmt.Fprintln(cmd.OutOrStdout(), err)
 		}
 
-		result := run(os.DirFS("."), cmd.InOrStdin(), args, fileName)
+		ignoreCase, err := cmd.Flags().GetBool(ignoreCaseFlag)
+		if err != nil {
+			fmt.Fprintln(cmd.OutOrStdout(), err)
+		}
+
+		result := run(os.DirFS("."), cmd.InOrStdin(), args, fileName, ignoreCase)
 		if result != "" {
 			fmt.Fprintln(cmd.OutOrStdout(), result)
 		}
@@ -62,5 +68,6 @@ func init() {
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
-	rootCmd.Flags().StringP(fileNameFlag, "o", "", "write output to file")
+	rootCmd.Flags().StringP(fileNameFlag, "o", "", "writes output to the file")
+	rootCmd.Flags().BoolP(ignoreCaseFlag, "i", false, "ignores case")
 }

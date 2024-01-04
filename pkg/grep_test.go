@@ -15,7 +15,7 @@ func TestSearchString(t *testing.T) {
 	file3Name := "testDir"
 	file4Name := "non-existent.txt"
 
-	file1Data := []byte("this\nis\na\nfile")
+	file1Data := []byte("this\nis\na\nfile\nIs")
 	file2Data := []byte{}
 
 	testFS := fstest.MapFS{
@@ -30,10 +30,12 @@ func TestSearchString(t *testing.T) {
 		stdin []byte
 		fileName string
 		keyword string
+		ignoreCase bool
 		result []string
 		expErr error
 	}{
-		{name: "reads a normal multi-line file", fs: testFS, stdin: nil, fileName: file1Name, keyword: "is", result: []string{"this", "is"}, expErr: nil},
+		{name: "greps a normal multi-line file", fs: testFS, stdin: nil, fileName: file1Name, keyword: "is", ignoreCase: false, result: []string{"this", "is"}, expErr: nil},
+		{name: "greps a normal multi-line file text sensitive", fs: testFS, stdin: nil, fileName: file1Name, keyword: "is", ignoreCase: true, result: []string{"this", "is", "Is"}, expErr: nil},
 		{name: "reads from stdin", fs: nil, stdin: []byte("this\nis\na\nfile"), fileName: "", keyword: "is", result: []string{"this", "is"}, expErr: nil},
 		{name: "reads a file with permission error", fs: testFS, stdin: nil, fileName: file2Name, expErr: fs.ErrPermission},
 		{name: "reads an empty directory", fs: testFS, stdin: nil, fileName: file3Name, expErr: ErrIsDirectory},
@@ -42,7 +44,7 @@ func TestSearchString(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := SearchString(tc.fs, tc.fileName, bytes.NewReader(tc.stdin), tc.keyword)
+			got, err := SearchString(tc.fs, tc.fileName, bytes.NewReader(tc.stdin), tc.keyword, tc.ignoreCase)
 			want := tc.result
 
 			if tc.expErr != nil {
