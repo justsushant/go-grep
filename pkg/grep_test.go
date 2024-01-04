@@ -12,8 +12,9 @@ import (
 func TestSearchString(t *testing.T) {
 	file1Name := "file1.txt"
 	file2Name := "file2.txt"
-	file3Name := "testDir"
+	dir1Name := "testDir"
 	file4Name := "non-existent.txt"
+	dir2Name := "tests"
 
 	file1Data := []byte("this\nis\na\nfile\nIs")
 	file2Data := []byte{}
@@ -21,8 +22,13 @@ func TestSearchString(t *testing.T) {
 	testFS := fstest.MapFS{
 		file1Name: {Data: file1Data, Mode: 0755},
 		file2Name: {Data: file2Data, Mode: 0000},
-		file3Name: {Data: nil, Mode: fs.ModeDir},
+		dir1Name: {Data: nil, Mode: fs.ModeDir},
 	}
+
+	testFS["tests/test1.txt"] = &fstest.MapFile{Data: []byte("Dummy Line\nthis is a test file\none can test a program by running test cases"), Mode: 0755}
+    testFS["tests/filexyz.txt"] = &fstest.MapFile{Data: []byte("no matches here"), Mode: 0755}
+    testFS["tests/inner/test1.txt"] = &fstest.MapFile{Data: []byte("dummy file"), Mode: 0755}
+    testFS["tests/inner/test2.txt"] = &fstest.MapFile{Data: []byte("this file contains a test line"), Mode: 0755}
 
 	testCases := []struct{
 		name string
@@ -31,6 +37,7 @@ func TestSearchString(t *testing.T) {
 		fileName string
 		keyword string
 		ignoreCase bool
+		searchDir bool
 		result []string
 		expErr error
 	}{
@@ -38,8 +45,9 @@ func TestSearchString(t *testing.T) {
 		{name: "greps a normal multi-line file text sensitive", fs: testFS, stdin: nil, fileName: file1Name, keyword: "is", ignoreCase: true, result: []string{"this", "is", "Is"}, expErr: nil},
 		{name: "reads from stdin", fs: nil, stdin: []byte("this\nis\na\nfile"), fileName: "", keyword: "is", result: []string{"this", "is"}, expErr: nil},
 		{name: "reads a file with permission error", fs: testFS, stdin: nil, fileName: file2Name, expErr: fs.ErrPermission},
-		{name: "reads an empty directory", fs: testFS, stdin: nil, fileName: file3Name, expErr: ErrIsDirectory},
+		{name: "reads an empty directory", fs: testFS, stdin: nil, fileName: dir1Name, expErr: ErrIsDirectory},
 		{name: "reads a non-existent file", fs: testFS, stdin: nil, fileName: file4Name, expErr: fs.ErrNotExist},
+		{name: "greps inside a directory with -r", fs: testFS, stdin: nil, fileName: dir2Name, keyword: "tests", ignoreCase: false, searchDir: true, expErr: nil},
 	}
 
 	for _, tc := range testCases {

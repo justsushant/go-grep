@@ -35,31 +35,11 @@ func SearchString(fSys fs.FS, path string, stdin io.Reader, keyword string, igno
 		scanner = bufio.NewScanner(stdin)
 	}
 
-	if ignoreCase {
-		keyword = strings.ToLower(keyword)
-	}
-
-	
-	var result []string
-	scanner.Split(bufio.ScanLines)
-	for scanner.Scan() {
-		var line string
-		line = scanner.Text()
-
-		if ignoreCase {
-			line = strings.ToLower(scanner.Text())
-		}
-		
-		if strings.Contains(line, keyword) {
-			result = append(result, scanner.Text())
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
+	result, err := search(scanner, keyword, ignoreCase)
+	if err != nil {
 		return nil, err
 	}
 
-	// fmt.Println(result)
 	return result, nil	
 }
 
@@ -84,4 +64,31 @@ func isValid(fSys fs.FS, path string) error {
 	}
 
 	return nil
+}
+
+func search(scanner *bufio.Scanner, keyword string, ignoreCase bool) ([]string, error) {
+	var result []string
+	if ignoreCase {
+		keyword = strings.ToLower(keyword)
+	}
+
+	scanner.Split(bufio.ScanLines)
+	for scanner.Scan() {
+		var line string
+		line = scanner.Text()
+
+		if ignoreCase {
+			line = strings.ToLower(scanner.Text())
+		}
+		
+		if strings.Contains(line, keyword) {
+			result = append(result, scanner.Text())
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
 }
