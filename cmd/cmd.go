@@ -15,9 +15,9 @@ func run(fSys fs.FS, stdin io.Reader, args []string, fileName string, isCaseSens
 	var err error
 
 	if len(args) > 1 {
-		result, err = grep.SearchString(fSys, args[1], stdin, args[0], isCaseSensitive)
+		result, err = grep.GrepRun(fSys, args[1], stdin, args[0], isCaseSensitive)
 	} else {
-		result, err = grep.SearchString(fSys, "", stdin, args[0], isCaseSensitive)
+		result, err = grep.GrepRun(fSys, "", stdin, args[0], isCaseSensitive)
 	}
 
 	if err != nil {
