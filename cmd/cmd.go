@@ -10,21 +10,28 @@ import (
 	grep "github.com/one2n-go-bootcamp/grep/pkg"
 )
 
-func run(fSys fs.FS, stdin io.Reader, args []string, fileName string, isCaseSensitive bool) string {
-	var result []string
+func run(fSys fs.FS, stdin io.Reader, args []string, fileName string, isCaseSensitive, searchDir bool) string {
+	var result [][]string
 	var err error
+	var output string
 
 	if len(args) > 1 {
-		result, err = grep.GrepRun(fSys, args[1], stdin, args[0], isCaseSensitive)
+		result, err = grep.GrepRun(fSys, args[1], stdin, args[0], isCaseSensitive, searchDir)
 	} else {
-		result, err = grep.GrepRun(fSys, "", stdin, args[0], isCaseSensitive)
+		result, err = grep.GrepRun(fSys, "", stdin, args[0], isCaseSensitive, searchDir)
 	}
 
 	if err != nil {
 		return err.Error()
 	}
 
-	output := strings.Join(result, "\n")
+	// output := strings.Join(result, "\n")
+	for _, r := range result {
+		out := strings.Join(r, ",")
+		output += out
+	}
+
+
 	if fileName != "" {
 		err := writeToFile(fileName, output)
 		if err != nil {

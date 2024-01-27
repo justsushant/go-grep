@@ -13,7 +13,51 @@ var (
 	ErrIsDirectory = errors.New("is a directory")
 )
 
-func GrepRun(fSys fs.FS, path string, stdin io.Reader, keyword string, ignoreCase bool) ([]string, error) {
+func GrepRun(fSys fs.FS, path string, stdin io.Reader, keyword string, ignoreCase, searchDir bool) ([][]string, error) {
+	if !searchDir {
+		result, err := Grep(fSys, path, stdin, keyword, ignoreCase)
+		if err != nil {
+			return nil, err
+		}
+
+		return [][]string{result}, nil
+	}
+
+	var results [][]string
+	// more than one error are not handled correctly here (eg, permisson error in two files)
+	fs.WalkDir(fSys, path, func(path string, d fs.DirEntry, err error) error {
+		// tests to handle errors inside this func
+		// not sure these are bubbling up
+
+		if err != nil {
+			// results = append(results, []string{err.Error()})
+			return err
+		}
+		
+		if d.IsDir() {
+			return nil
+		}
+
+		result, errGrep := Grep(fSys, path, stdin, keyword, ignoreCase)
+		if errGrep != nil {
+			// results = append(results, []string{errGrep.Error()})
+			return errGrep
+		}
+
+		if len(result) > 0 {
+			for i := range result {
+				result[i] = fmt.Sprintf("%s:%s", path, result[i])
+			}
+			results = append(results, result)
+		}
+
+		return nil
+	})
+
+	return results, nil
+}
+
+func Grep(fSys fs.FS, path string, stdin io.Reader, keyword string, ignoreCase bool) ([]string, error) {
 	r, cleanup, err := getReader(fSys, path, stdin)
 	if err != nil {
 		return nil, err
@@ -95,52 +139,3 @@ func isValid(fSys fs.FS, fileName string) error {
 
 	return nil
 }
-
-// func GrepRun(fSys fs.FS, fileName string, stdin io.Reader, keyword string, ignoreCase bool) ([]string, error) {
-// 	var scanner *bufio.Scanner
-
-// 	if fileName != "" {
-// 		// check for validity
-// 		err := isValid(fSys, fileName)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-
-// 		// open file
-// 		file, err := fSys.Open(fileName)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		defer file.Close()
-
-// 		scanner = bufio.NewScanner(file)
-// 	} else {
-// 		scanner = bufio.NewScanner(stdin)
-// 	}
-
-// 	if ignoreCase {
-// 		keyword = strings.ToLower(keyword)
-// 	}
-
-// 	var result []string
-// 	scanner.Split(bufio.ScanLines)
-// 	for scanner.Scan() {
-// 		var line string
-// 		line = scanner.Text()
-
-// 		if ignoreCase {
-// 			line = strings.ToLower(scanner.Text())
-// 		}
-
-// 		if strings.Contains(line, keyword) {
-// 			result = append(result, scanner.Text())
-// 		}
-// 	}
-
-// 	if err := scanner.Err(); err != nil {
-// 		return nil, err
-// 	}
-
-// 	// fmt.Println(result)
-// 	return result, nil
-// }

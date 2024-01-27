@@ -25,6 +25,7 @@ import (
 var (
 	fileNameFlag = "fileName"
 	ignoreCaseFlag = "ignoreCase"
+	searchDirFlag = "searchDir"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -36,13 +37,16 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			fmt.Fprintln(cmd.OutOrStdout(), err)
 		}
-
 		ignoreCase, err := cmd.Flags().GetBool(ignoreCaseFlag)
 		if err != nil {
 			fmt.Fprintln(cmd.OutOrStdout(), err)
 		}
+		searchDir, err := cmd.Flags().GetBool(searchDirFlag)
+		if err != nil {
+			fmt.Fprintln(cmd.OutOrStdout(), err)
+		}
 
-		result := run(os.DirFS("."), cmd.InOrStdin(), args, fileName, ignoreCase)
+		result := run(os.DirFS("."), cmd.InOrStdin(), args, fileName, ignoreCase, searchDir)
 		if result != "" {
 			fmt.Fprintln(cmd.OutOrStdout(), result)
 		}
@@ -70,4 +74,5 @@ func init() {
 	// when this action is called directly.
 	rootCmd.Flags().StringP(fileNameFlag, "o", "", "writes output to the file")
 	rootCmd.Flags().BoolP(ignoreCaseFlag, "i", false, "ignores case")
+	rootCmd.Flags().BoolP(searchDirFlag, "r", false, "searches directory")
 }
