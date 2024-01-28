@@ -12,13 +12,15 @@ import (
 
 func run(fSys fs.FS, stdin io.Reader, args []string, fileName string, isCaseSensitive, searchDir bool) string {
 	var result [][]string
+	var grepResult []string
 	var err error
 	var output string
 
 	if len(args) > 1 {
-		result, err = grep.GrepRun(fSys, args[1], stdin, args[0], isCaseSensitive, searchDir)
+		result, err = grep.GrepR(fSys, args[1], args[0], isCaseSensitive)
 	} else {
-		result, err = grep.GrepRun(fSys, "", stdin, args[0], isCaseSensitive, searchDir)
+		grepResult, err = grep.Grep(fSys, "", stdin, args[0], isCaseSensitive)
+		result = append(result, grepResult)
 	}
 
 	if err != nil {

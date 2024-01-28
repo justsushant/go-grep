@@ -7,53 +7,63 @@ import (
 	"io"
 	"io/fs"
 	"strings"
+	"sync"
 )
 
 var (
 	ErrIsDirectory = errors.New("is a directory")
 )
 
-func GrepRun(fSys fs.FS, path string, stdin io.Reader, keyword string, ignoreCase, searchDir bool) ([][]string, error) {
-	if !searchDir {
-		result, err := Grep(fSys, path, stdin, keyword, ignoreCase)
-		if err != nil {
-			return nil, err
-		}
-
-		return [][]string{result}, nil
-	}
-
+func GrepR(fSys fs.FS, path string, keyword string, ignoreCase bool) ([][]string, error) {
+	var wg sync.WaitGroup
+	var outputChans []chan string
 	var results [][]string
-	// more than one error are not handled correctly here (eg, permisson error in two files)
+
 	fs.WalkDir(fSys, path, func(path string, d fs.DirEntry, err error) error {
-		// tests to handle errors inside this func
-		// not sure these are bubbling up
+		outputChan := make(chan string)
+		outputChans = append(outputChans, outputChan)
 
-		if err != nil {
-			// results = append(results, []string{err.Error()})
-			return err
-		}
-		
-		if d.IsDir() {
-			return nil
-		}
+		wg.Add(1)
+		go func(outputChan chan string) {
+			defer wg.Done()
+			defer close(outputChan)
 
-		result, errGrep := Grep(fSys, path, stdin, keyword, ignoreCase)
-		if errGrep != nil {
-			// results = append(results, []string{errGrep.Error()})
-			return errGrep
-		}
-
-		if len(result) > 0 {
-			for i := range result {
-				result[i] = fmt.Sprintf("%s:%s", path, result[i])
+			if err != nil {
+				outputChan <- err.Error()
+				return
 			}
-			results = append(results, result)
-		}
+
+			if d.IsDir() {
+				return
+			}
+
+			result, errGrep := Grep(fSys, path, nil, keyword, ignoreCase)
+			if errGrep != nil {
+				outputChan <- errGrep.Error()
+				return
+			}
+
+			for _, r := range result {
+				outputChan <- fmt.Sprintf("%s:%s", path, r)
+			}
+			
+		}(outputChan)
 
 		return nil
 	})
 
+	// A receive operation on a closed channel can always proceed immediately, 
+	// yielding the element type's zero value after any previously sent values have been received.
+	for _, outputChan := range outputChans {
+		var result []string
+		for resultStr := range outputChan {
+			result = append(result, resultStr)
+		}
+		
+		if len(result) > 0 {
+			results = append(results, result)
+		}
+	}
 	return results, nil
 }
 

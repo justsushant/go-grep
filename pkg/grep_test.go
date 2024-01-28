@@ -3,29 +3,26 @@ package grep
 import (
 	"bytes"
 	"errors"
-	// "fmt"
 	"io/fs"
-
-	// "slices"
 	"reflect"
 	"testing"
 	"testing/fstest"
 )
 
 func TestSearchString(t *testing.T) {
+	dir1Name := "testDir"
 	file1Name := "file1.txt"
 	file2Name := "file2.txt"
-	dir1Name := "testDir"
-	file4Name := "non-existent.txt"
-
+	file3Name := "file3.txt"
 	file1Data := []byte("this\nis\na\nfile\nIs")
 	file2Data := []byte{}
+	file3Data := []byte("line1\nline2\nline3\nline4\nline5\nmatch1\nmatch2")
 
 	testFS := fstest.MapFS{
 		file1Name: {Data: file1Data, Mode: 0755},
 		file2Name: {Data: file2Data, Mode: 0000},
+		file3Name: {Data: file3Data, Mode: 0755},
 		dir1Name:  {Data: nil, Mode: fs.ModeDir},
-
 	}
 
 	testCases := []struct {
@@ -35,20 +32,20 @@ func TestSearchString(t *testing.T) {
 		fileName   string
 		keyword    string
 		ignoreCase bool
-		result     [][]string
+		result     []string
 		expErr     error
 	}{
-		{name: "greps a normal multi-line file", fs: testFS, stdin: nil, fileName: file1Name, keyword: "is", ignoreCase: false, result: [][]string{{"this", "is"}}, expErr: nil},
-		{name: "greps a normal multi-line file text sensitive", fs: testFS, stdin: nil, fileName: file1Name, keyword: "is", ignoreCase: true, result: [][]string{{"this", "is", "Is"}}, expErr: nil},
-		{name: "reads from stdin", fs: nil, stdin: []byte("this\nis\na\nfile"), fileName: "", keyword: "is", result: [][]string{{"this", "is"}}, expErr: nil},
+		{name: "greps a multi-line file", fs: testFS, stdin: nil, fileName: file1Name, keyword: "is", ignoreCase: false, result: []string{"this", "is"}, expErr: nil},
+		{name: "greps a multi-line file text sensitive", fs: testFS, stdin: nil, fileName: file1Name, keyword: "is", ignoreCase: true, result: []string{"this", "is", "Is"}, expErr: nil},
+		{name: "reads from stdin", fs: nil, stdin: []byte("this\nis\na\nfile"), fileName: "", keyword: "is", result: []string{"this", "is"}, expErr: nil},
 		{name: "reads a file with permission error", fs: testFS, stdin: nil, fileName: file2Name, expErr: fs.ErrPermission},
 		{name: "reads an empty directory", fs: testFS, stdin: nil, fileName: dir1Name, expErr: ErrIsDirectory},
-		{name: "reads a non-existent file", fs: testFS, stdin: nil, fileName: file4Name, expErr: fs.ErrNotExist},
+		{name: "reads a non-existent file", fs: testFS, stdin: nil, fileName: "non-existent-file.txt", expErr: fs.ErrNotExist},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := GrepRun(tc.fs, tc.fileName, bytes.NewReader(tc.stdin), tc.keyword, tc.ignoreCase, false)
+			got, err := Grep(tc.fs, tc.fileName, bytes.NewReader(tc.stdin), tc.keyword, tc.ignoreCase)
 			want := tc.result
 
 			if tc.expErr != nil {
@@ -78,30 +75,25 @@ func TestSearchStringR(t *testing.T) {
 	var testFS fstest.MapFS = make(map[string]*fstest.MapFile)
 	testFS["tests"] = &fstest.MapFile{Data: nil, Mode: fs.ModeDir}
 	testFS["tests/test1.txt"] = &fstest.MapFile{Data: []byte("Dummy Line\nthis is a test file\none can test a program by running test cases"), Mode: 0755}
-	testFS["tests/test2.txt"] = &fstest.MapFile{Data: []byte("Dummy Line\nthis is a test file\none can test a program by running test cases"), Mode: 0000}
 	testFS["tests/filexyz.txt"] = &fstest.MapFile{Data: []byte("no matches here"), Mode: 0755}
-	testFS["tests/filexyz2.txt"] = &fstest.MapFile{Data: []byte("no matches here"), Mode: 0000}
 	testFS["tests/inner/test1.txt"] = &fstest.MapFile{Data: []byte("dummy file"), Mode: 0755}
-	// testFS["tests/inner/test3.txt"] = &fstest.MapFile{Data: []byte("dummy file"), Mode: 0000}
 	testFS["tests/inner/test2.txt"] = &fstest.MapFile{Data: []byte("this file contains a test line"), Mode: 0755}
 
 	testCases := []struct {
 		name       string
 		fs         fs.FS
-		stdin      []byte
 		fileName   string
 		keyword    string
 		ignoreCase bool
-		searchDir  bool
 		result     [][]string
 		expErr     error
 	}{
-		{name: "greps inside a directory with -r", fs: testFS, stdin: nil, fileName: "tests", keyword: "test", ignoreCase: false, result: [][]string{{"tests/test1.txt:this is a test file", "tests/test1.txt:one can test a program by running test cases"}, {"tests/inner/test2.txt:this file contains a test line"}}, searchDir: true, expErr: nil},
+		{name: "greps inside a directory with -r", fs: testFS, fileName: "tests", keyword: "test", ignoreCase: false, result: [][]string{{"tests/test1.txt:this is a test file", "tests/test1.txt:one can test a program by running test cases"}, {"tests/inner/test2.txt:this file contains a test line"}}, expErr: nil},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := GrepRun(tc.fs, tc.fileName, nil, tc.keyword, tc.ignoreCase, tc.searchDir)
+			got, err := GrepR(tc.fs, tc.fileName, tc.keyword, tc.ignoreCase)
 			want := tc.result
 
 			if tc.expErr != nil {
@@ -122,6 +114,7 @@ func TestSearchStringR(t *testing.T) {
 
 			// change the below checking of got & want into check of length (of sorts, maybe)
 			// because no gurantee if order of elements will be as expected or not
+			// also, if got length is zero, errors won't be catched
 			for _, g := range got {
 				matchFlag := false
 				for _, w := range want {
@@ -134,6 +127,10 @@ func TestSearchStringR(t *testing.T) {
 				if !matchFlag {
 					t.Errorf("Expected %v but got %v", want, got)
 				}
+			}
+
+			if len(got) != len(want) {
+				t.Errorf("Expected length: %d, Got length: %d", len(want), len(got))
 			}
 		})
 	}
