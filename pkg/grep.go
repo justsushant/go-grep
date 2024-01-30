@@ -15,23 +15,33 @@ var (
 )
 
 type GrepOptions struct {
-	path string
-	stdin io.Reader
-	keyword string
-	ignoreCase bool
-	linesBeforeMatch int
+	Path string
+	Stdin io.Reader
+	Keyword string
+	IgnoreCase bool
+	LinesBeforeMatch int
+	LineCount bool
 }
 
 func Grep(fSys fs.FS, options GrepOptions) ([]string, error) {
-	r, cleanup, err := getReader(fSys, options.path, options.stdin)
+	r, cleanup, err := getReader(fSys, options.Path, options.Stdin)
 	if err != nil {
 		return nil, err
 	}
 	defer cleanup()
 
-	result, err := searchString(r, options.keyword, options.ignoreCase, options.linesBeforeMatch)
+	result, err := searchString(r, options)
 	if err != nil {
 		return nil, err
+	}
+
+	// if no matches, return nil
+	if len(result) == 0 {
+		return nil, nil
+	}
+
+	if options.LineCount {
+		return []string{fmt.Sprintf("%d", len(result))}, nil
 	}
 
 	return result, nil
@@ -54,35 +64,37 @@ func getReader(fSys fs.FS, fileName string, stdin io.Reader) (io.Reader, func(),
 	return stdin, func() {}, nil
 }
 
-func searchString(r io.Reader,  keyword string, ignoreCase bool, linesBeforeMatch int) ([]string, error) {
-	grepBuff := NewGrepBuffer(linesBeforeMatch)
-	var result []string
-	scanner := bufio.NewScanner(r)
-
-	if ignoreCase {
-		keyword = strings.ToLower(keyword)
+func searchString(r io.Reader, options GrepOptions) ([]string, error) {
+	grepBuffBefore := NewGrepBuffer(options.LinesBeforeMatch)
+	
+	keyword := options.Keyword
+	if options.IgnoreCase {		//normalising keyword if ignoreCase
+		keyword = strings.ToLower(options.Keyword)
 	}
 
+	var result []string
+	scanner := bufio.NewScanner(r)
 	scanner.Split(bufio.ScanLines)
 	for scanner.Scan() {
 		var line string
 		line = scanner.Text()
 
-		if ignoreCase {
+		// normalising line if ignoreCase
+		if options.IgnoreCase {
 			line = strings.ToLower(scanner.Text())
 		}
 
+		// comparison and saving lines if matched
 		if strings.Contains(line, keyword) {
-			if linesBeforeMatch > 0 {
-				result = append(result, grepBuff.Dump()...)
-			} 
-
+			if options.LinesBeforeMatch > 0 {
+				result = append(result, grepBuffBefore.Dump()...)
+			}
 			result = append(result, scanner.Text())
-			
 		}
 		
-		if linesBeforeMatch > 0 {
-			grepBuff.Push(scanner.Text())
+		// save lines to buffer
+		if options.LinesBeforeMatch > 0 {
+			grepBuffBefore.Push(scanner.Text())
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -120,7 +132,7 @@ func GrepR(fSys fs.FS, options GrepOptions) ([][]string, error) {
 	var outputChans []chan string
 	var results [][]string
 
-	fs.WalkDir(fSys, options.path, func(path string, d fs.DirEntry, err error) error {
+	fs.WalkDir(fSys, options.Path, func(path string, d fs.DirEntry, err error) error {
 		outputChan := make(chan string)
 		outputChans = append(outputChans, outputChan)
 
@@ -138,13 +150,13 @@ func GrepR(fSys fs.FS, options GrepOptions) ([][]string, error) {
 				return
 			}
 
-			options := GrepOptions{path: path, stdin: nil, keyword: options.keyword, ignoreCase: options.ignoreCase, linesBeforeMatch: options.linesBeforeMatch}
+			options := GrepOptions{Path: path, Keyword: options.Keyword, IgnoreCase: options.IgnoreCase, LinesBeforeMatch: options.LinesBeforeMatch, LineCount: options.LineCount}
 			result, errGrep := Grep(fSys, options)
 			if errGrep != nil {
 				outputChan <- errGrep.Error()
 				return
 			}
-
+			
 			for _, r := range result {
 				outputChan <- fmt.Sprintf("%s:%s", path, r)
 			}
@@ -154,8 +166,6 @@ func GrepR(fSys fs.FS, options GrepOptions) ([][]string, error) {
 		return nil
 	})
 
-	// A receive operation on a closed channel can always proceed immediately, 
-	// yielding the element type's zero value after any previously sent values have been received.
 	for _, outputChan := range outputChans {
 		var result []string
 		for resultStr := range outputChan {
@@ -166,5 +176,10 @@ func GrepR(fSys fs.FS, options GrepOptions) ([][]string, error) {
 			results = append(results, result)
 		}
 	}
+
+	if len(results) == 0 {
+		return nil, nil
+	}
+
 	return results, nil
 }

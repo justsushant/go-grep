@@ -10,17 +10,33 @@ import (
 	grep "github.com/one2n-go-bootcamp/grep/pkg"
 )
 
-func run(fSys fs.FS, stdin io.Reader, args []string, fileName string, isCaseSensitive, searchDir bool) string {
+func run(fSys fs.FS, stdin io.Reader, args []string, fileName string, linesBeforeMatch int, ignoreCase, searchDir, lineCount bool) string {
 	var result [][]string
-	var grepResult []string
 	var err error
 	var output string
 
+	options := grep.GrepOptions{
+		Stdin: stdin,
+		Keyword: args[0],
+		IgnoreCase: ignoreCase,
+		LinesBeforeMatch: linesBeforeMatch,
+		LineCount: lineCount,
+	}
+
+	if linesBeforeMatch > 0 {
+		options.LinesBeforeMatch = linesBeforeMatch
+	}
+
 	if len(args) > 1 {
-		result, err = grep.GrepR(fSys, args[1], args[0], isCaseSensitive)
+		result, err = grep.GrepR(fSys, options)
 	} else {
-		grepResult, err = grep.Grep(fSys, "", stdin, args[0], isCaseSensitive)
-		result = append(result, grepResult)
+		options.Path = args[1]
+
+		if grepResult, err := grep.Grep(fSys, options); err != nil {
+			return err.Error()
+		} else {
+			result = append(result, grepResult)
+		}
 	}
 
 	if err != nil {
