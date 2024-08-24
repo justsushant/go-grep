@@ -1,17 +1,158 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
+	"io"
+
+	"io/fs"
 	"os"
+	"strings"
 	"testing"
+
+	grep "github.com/one2n-go-bootcamp/go-grep/pkg"
+	// "testing/fstest"
 )
 
+// since run function integrates all the other functions, so actual files are used
+func TestRun(t *testing.T) {
+	// var testFS fstest.MapFS = make(map[string]*fstest.MapFile)
+	// testFS["testdata"] = &fstest.MapFile{Data: nil, Mode: fs.ModeDir}
+	// testFS["testdata/test1.txt"] = &fstest.MapFile{Data: []byte("Dummy Line\nthis is a test file\none can test a program by running test cases"), Mode: 0755}
+	// testFS["testdata/test2.txt"] = &fstest.MapFile{Data: []byte("you will find\nno matches here\nwhatsoever"), Mode: 0755}
+	// testFS["testdata/inner/test1.txt"] = &fstest.MapFile{Data: []byte("dummy file"), Mode: 0755}
+	// testFS["testdata/inner/test2.txt"] = &fstest.MapFile{Data: []byte("this file contains a test line"), Mode: 0755}
+
+	testCases := []struct {
+		name             string
+		stdin            io.Reader
+		fileWName        string
+		path             string
+		keyword          string
+		ignoreCase       bool
+		linesBeforeMatch int
+		searchDir        bool
+		lineCount        bool
+		result           [][]string
+		expErr           error
+	}{
+		{
+			name:    "greps on a multi-line file",
+			path:    "../testdata/cmd_test/test2.txt",
+			keyword: "match",
+			result:  [][]string{{"no matches here"}},
+		},
+		{
+			name:    "greps on a multi-line file without matches",
+			path:    "../testdata/cmd_test/test2.txt",
+			keyword: "vibgyor",
+			result:  [][]string{},
+		},
+		{
+			name:    "greps on stdin",
+			stdin:   bytes.NewReader([]byte("you will find\nno matches here\nwhatsoever")),
+			keyword: "match",
+			result:  [][]string{{"no matches here"}},
+		},
+		{
+			name:    "greps on a non-existent file",
+			path:    "../testdata/cmd_test/non-existent-file.txt",
+			keyword: "vibgyor",
+			expErr:  fs.ErrNotExist,
+		},
+		{
+			name:    "greps on a directory",
+			path:    "../testdata/cmd_test/inner",
+			keyword: "vibgyor",
+			expErr:  grep.ErrIsDirectory,
+		},
+		// {
+		// 	name: "reads a file with permission error",
+		// 	path: "testdata/cmd_test/perm_err/test1.txt",
+		// 	expErr: fs.ErrPermission,
+		// },
+		{
+			name:      "greps inside a directory with -r",
+			path:      "../testdata/cmd_test",
+			keyword:   "test",
+			searchDir: true,
+			result: [][]string{
+				{"../testdata/cmd_test/test1.txt:this is a test file", "../testdata/cmd_test/test1.txt:one can test a program by running test cases"},
+				{"../testdata/cmd_test/inner/test2.txt:this file contains a test line"},
+			},
+		},
+		{
+			name:      "greps inside a directory with -r without matches",
+			path:      "../testdata/cmd_test",
+			keyword:   "vibgyor",
+			searchDir: true,
+			result:    [][]string{},
+		},
+		{
+			name:             "greps inside a directory with -r with 1 line before match option",
+			path:             "../testdata/cmd_test",
+			keyword:          "test",
+			searchDir:        true,
+			linesBeforeMatch: 1,
+			result: [][]string{
+				{"../testdata/cmd_test/test1.txt:Dummy Line", "../testdata/cmd_test/test1.txt:this is a test file", "../testdata/cmd_test/test1.txt:this is a test file", "../testdata/cmd_test/test1.txt:one can test a program by running test cases"},
+				{"../testdata/cmd_test/inner/test2.txt:this file contains a test line"},
+			},
+		},
+		{
+			name:      "greps inside a directory with -r with line count option",
+			path:      "../testdata/cmd_test",
+			keyword:   "test",
+			searchDir: true,
+			lineCount: true,
+			result:    [][]string{{"../testdata/cmd_test/test1.txt:2"}, {"../testdata/cmd_test/inner/test2.txt:1"}},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got bytes.Buffer
+			want := getExpectedOutput(t, tc.result)
+
+			run(os.DirFS("/"), tc.stdin, &got, tc.keyword, tc.path, tc.fileWName, tc.linesBeforeMatch, tc.ignoreCase, tc.searchDir, tc.lineCount)
+
+			// checking for error
+			if tc.expErr != nil {
+				if !strings.Contains(got.String(), tc.expErr.Error()) {
+					t.Fatalf("Expected error %q not found in the final output %q\n", tc.expErr.Error(), got.String())
+				}
+				return
+			}
+
+			// length check of both expected and resultant
+			if len(strings.Split(got.String(), "\n")) != len(strings.Split(want, "\n")) {
+				t.Errorf("Expected number of line %d but got %d", len(strings.Split(want, "\n")), len(strings.Split(got.String(), "\n")))
+			}
+
+			// checking if each line wanted is present in output
+			for _, w := range strings.Split(want, "\n") {
+				matchFlag := false
+				for _, g := range strings.Split(got.String(), "\n") {
+					if g == w {
+						matchFlag = true
+						break
+					}
+				}
+
+				if !matchFlag {
+					t.Errorf("Expected string %q was not found in final output %q", w, got.String())
+				}
+			}
+		})
+	}
+}
+
 func TestWriteToFile(t *testing.T) {
-	testCases := []struct{
-		name string
+	testCases := []struct {
+		name     string
 		filePath string
-		content string
-		expErr error
+		content  string
+		expErr   error
 	}{
 		{name: "write to file", filePath: "test.txt", content: "test only", expErr: nil},
 		{name: "write to already created file", filePath: "test.txt", content: "test only", expErr: os.ErrExist},
@@ -52,4 +193,13 @@ func TestWriteToFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+func getExpectedOutput(t *testing.T, result [][]string) string {
+	t.Helper()
+	var wantArr []string
+	for _, res := range result {
+		wantArr = append(wantArr, strings.Join(res, "\n"))
+	}
+	return strings.Join(wantArr, "\n")
 }

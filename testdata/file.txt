@@ -1,6 +1,0 @@
-Dummy line search_
-I found the search_string in the file.
-Dummy line _string
-Another line also contains the search_string
-Another line also contains the sEarCh_strIng
-I found the SEARCH_STRING in the file.

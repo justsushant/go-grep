@@ -35,7 +35,7 @@ var rootCmd = &cobra.Command{
 	Use:   "grep",
 	Short: "command line program that implements Unix grep like functionality",
 	Run: func(cmd *cobra.Command, args []string) {
-		fileName, err := cmd.Flags().GetString(fileNameFlag)
+		fileWriteName, err := cmd.Flags().GetString(fileNameFlag)
 		if err != nil {
 			fmt.Fprintln(cmd.OutOrStdout(), err)
 		}
@@ -55,11 +55,10 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			fmt.Fprintln(cmd.OutOrStdout(), err)
 		}
+		keyword := args[0]
+		path := args[1]
 
-		result := run(os.DirFS("."), cmd.InOrStdin(), args, fileName, linesBeforeMatch, ignoreCase, searchDir, lineCount)
-		if result != "" {
-			fmt.Fprintln(cmd.OutOrStdout(), result)
-		}
+		run(os.DirFS("/"), cmd.InOrStdin(), cmd.OutOrStdout(), keyword, path, fileWriteName, linesBeforeMatch, ignoreCase, searchDir, lineCount)
 		os.Exit(0)
 	},
 }
@@ -85,6 +84,6 @@ func init() {
 	rootCmd.Flags().StringP(fileNameFlag, "o", "", "writes output to the file")
 	rootCmd.Flags().BoolP(ignoreCaseFlag, "i", false, "ignores case")
 	rootCmd.Flags().BoolP(searchDirFlag, "r", false, "searches directory")
-	rootCmd.Flags().IntP(linesBeforeMatchFlag, "r", 0, "includes the line(s) before the match")
-	rootCmd.Flags().BoolP(lineCountFlag, "r", false, "includes the line count")
+	rootCmd.Flags().IntP(linesBeforeMatchFlag, "B", 0, "includes the line(s) before the match")
+	rootCmd.Flags().BoolP(lineCountFlag, "C", false, "includes the line count")
 }

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -15,60 +17,145 @@ var (
 )
 
 type GrepOptions struct {
+	OrigPath string
 	Path string
 	Stdin io.Reader
 	Keyword string
+	FileWName string
 	IgnoreCase bool
 	LinesBeforeMatch int
+	SearchDir bool
 	LineCount bool
 }
 
-func Grep(fSys fs.FS, options GrepOptions) ([]string, error) {
-	r, cleanup, err := getReader(fSys, options.Path, options.Stdin)
+type GrepResult struct {
+	Path string
+	MatchedLines []string
+	LineCount int
+	Error error
+}
+
+func getRelPath(fSys fs.FS, arg string) (relPath string, err error) {
+	absPath, err := filepath.Abs(filepath.Clean(arg))
 	if err != nil {
-		return nil, err
+		fmt.Println(err)
+		return "", err
+	}
+
+	root := fmt.Sprintf("%s", fSys)
+	relPath, err = filepath.Rel(root, absPath)
+	if err != nil {
+		return "", err
+	}
+
+	return relPath, nil
+}
+
+func GrepR(fSys fs.FS, options GrepOptions) []GrepResult {
+	var wg sync.WaitGroup
+	var outputChans []chan GrepResult
+
+	fs.WalkDir(fSys, options.Path, func(path string, d fs.DirEntry, err error) error {
+		outputChan := make(chan GrepResult)
+		outputChans = append(outputChans, outputChan)
+
+		wg.Add(1)
+		go func(outputChan chan GrepResult) {
+			defer wg.Done()
+			defer close(outputChan)
+			var x = options.OrigPath
+
+			if err != nil {
+				outputChan <- GrepResult{Error: err}
+				return
+			}
+
+			if d.IsDir() {
+				return
+			}
+
+			 // Compute the relative path
+			 relPath, err := filepath.Rel(options.Path, path)
+			 if err != nil {
+				 outputChan <- GrepResult{Error: err}
+				 return
+			 }
+
+			options := GrepOptions{Path: path, OrigPath: relPath, Keyword: options.Keyword, IgnoreCase: options.IgnoreCase, LinesBeforeMatch: options.LinesBeforeMatch, LineCount: options.LineCount}
+			result := Grep(fSys, options)
+			if result.Error != nil {
+				outputChan <- result
+				return
+			}
+			
+			if len(result.MatchedLines) == 0 && result.LineCount == 0 {
+				return
+			}
+			
+			result.Path = filepath.Clean(x + string(os.PathSeparator) + options.OrigPath)
+			outputChan <- result
+		} (outputChan)
+
+		return nil
+	})
+
+	var results []GrepResult
+	for _, outputChan := range outputChans {
+		result := <-outputChan
+		if len(result.MatchedLines) == 0 && result.LineCount == 0 {
+			continue
+		}
+		results = append(results, result)
+	}
+	return results
+}
+
+func Grep(fSys fs.FS, option GrepOptions) GrepResult {
+	r, cleanup, err := getReader(fSys, option)
+	if err != nil {
+		return GrepResult{Error: err}
 	}
 	defer cleanup()
 
-	result, err := searchString(r, options)
+	result, err := searchString(r, option)
 	if err != nil {
-		return nil, err
+		return GrepResult{Error: err}
 	}
 
-	// if no matches, return nil
-	if len(result) == 0 {
-		return nil, nil
+	res := GrepResult{
+		Path: option.OrigPath,
+	}
+	// res := GrepResult{MatchedLines: result}
+	if option.LineCount {
+		res.LineCount = len(result)
+	} else {
+		res.MatchedLines = result
 	}
 
-	if options.LineCount {
-		return []string{fmt.Sprintf("%d", len(result))}, nil
-	}
-
-	return result, nil
+	return res
 }
 
-func getReader(fSys fs.FS, fileName string, stdin io.Reader) (io.Reader, func(), error) {
-	if fileName != "" {
-		err := isValid(fSys, fileName)
+func getReader(fSys fs.FS, option GrepOptions) (io.Reader, func(), error) {
+	if option.Path != "" {
+		err := isValid(fSys, option.Path, option.OrigPath)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		file, err := fSys.Open(fileName)
+		file, err := fSys.Open(option.Path)
 		if err != nil {
 			return nil, nil, err
 		}
 		return file, func() {file.Close()}, nil
 	}
-
-	return stdin, func() {}, nil
+	return option.Stdin, func() {}, nil
 }
 
 func searchString(r io.Reader, options GrepOptions) ([]string, error) {
 	grepBuffBefore := NewGrepBuffer(options.LinesBeforeMatch)
 	
 	keyword := options.Keyword
-	if options.IgnoreCase {		//normalising keyword if ignoreCase
+	if options.IgnoreCase {		// normalising keyword if ignoreCase
 		keyword = strings.ToLower(options.Keyword)
 	}
 
@@ -76,8 +163,7 @@ func searchString(r io.Reader, options GrepOptions) ([]string, error) {
 	scanner := bufio.NewScanner(r)
 	scanner.Split(bufio.ScanLines)
 	for scanner.Scan() {
-		var line string
-		line = scanner.Text()
+		line := scanner.Text()
 
 		// normalising line if ignoreCase
 		if options.IgnoreCase {
@@ -104,82 +190,27 @@ func searchString(r io.Reader, options GrepOptions) ([]string, error) {
 	return result, nil
 }
 
-func isValid(fSys fs.FS, fileName string) error {
-	fileInfo, err := fs.Stat(fSys, fileName)
+func isValid(fSys fs.FS, path, origPath string) error {
+	fileInfo, err := fs.Stat(fSys, path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("%s: %w", fileName, fs.ErrNotExist)
+			return fmt.Errorf("%s: %w", origPath, fs.ErrNotExist)
 		}
-		return fmt.Errorf("%s: %w", fileName, err)
+		return fmt.Errorf("%s: %w", path, err)
 	}
 
 	// checks for directory
 	if fileInfo.IsDir() {
-		return fmt.Errorf("%s: %w", fileName, ErrIsDirectory)
+		return fmt.Errorf("%s: %w", origPath, ErrIsDirectory)
 	}
 
 	// checks for permissions
 	// looks hacky, might have to change later
 	if fileInfo.Mode().Perm()&400 == 0 {
-		return fmt.Errorf("%s: %w", fileName, fs.ErrPermission)
+		return fmt.Errorf("%s: %w", path, fs.ErrPermission)
 	}
 
 	return nil
 }
 
-func GrepR(fSys fs.FS, options GrepOptions) ([][]string, error) {
-	var wg sync.WaitGroup
-	var outputChans []chan string
-	var results [][]string
 
-	fs.WalkDir(fSys, options.Path, func(path string, d fs.DirEntry, err error) error {
-		outputChan := make(chan string)
-		outputChans = append(outputChans, outputChan)
-
-		wg.Add(1)
-		go func(outputChan chan string) {
-			defer wg.Done()
-			defer close(outputChan)
-
-			if err != nil {
-				outputChan <- err.Error()
-				return
-			}
-
-			if d.IsDir() {
-				return
-			}
-
-			options := GrepOptions{Path: path, Keyword: options.Keyword, IgnoreCase: options.IgnoreCase, LinesBeforeMatch: options.LinesBeforeMatch, LineCount: options.LineCount}
-			result, errGrep := Grep(fSys, options)
-			if errGrep != nil {
-				outputChan <- errGrep.Error()
-				return
-			}
-			
-			for _, r := range result {
-				outputChan <- fmt.Sprintf("%s:%s", path, r)
-			}
-			
-		}(outputChan)
-
-		return nil
-	})
-
-	for _, outputChan := range outputChans {
-		var result []string
-		for resultStr := range outputChan {
-			result = append(result, resultStr)
-		}
-		
-		if len(result) > 0 {
-			results = append(results, result)
-		}
-	}
-
-	if len(results) == 0 {
-		return nil, nil
-	}
-
-	return results, nil
-}

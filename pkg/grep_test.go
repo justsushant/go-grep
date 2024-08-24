@@ -27,52 +27,116 @@ func TestSearchString(t *testing.T) {
 		file4Name: {Data: file4Data, Mode: 0755},
 		dir1Name:  {Data: nil, Mode: fs.ModeDir},
 	}
-	
+
 	testCases := []struct {
-		name       string
-		fs         fs.FS
-		stdin      []byte
-		fileName   string
-		keyword    string
-		ignoreCase bool
+		name             string
+		stdin            []byte
+		fileName         string
+		keyword          string
+		ignoreCase       bool
 		linesBeforeMatch int
-		lineCount bool
-		result     []string
-		expErr     error
+		lineCount        bool
+		result           GrepResult
+		expErr           error
 	}{
-		{name: "greps a multi-line file", fs: testFS, stdin: nil, fileName: file1Name, keyword: "is", ignoreCase: false, result: []string{"this", "is"}, expErr: nil},
-		{name: "greps a multi-line file text sensitive", fs: testFS, stdin: nil, fileName: file1Name, keyword: "is", ignoreCase: true, result: []string{"this", "is", "Is"}, expErr: nil},
-		{name: "greps a multi-line file lines with before single match", fs: testFS, stdin: nil, fileName: file3Name, keyword: "match", ignoreCase: false, linesBeforeMatch: 2, result: []string{"line4", "line5", "line6 match1"}, expErr: nil},
-		{name: "greps a multi-line file lines with before double match", fs: testFS, stdin: nil, fileName: file4Name, keyword: "match", ignoreCase: false, linesBeforeMatch: 2, result: []string{"line4", "line5", "line6 match1", "line5", "line6 match1", "line7 match2"}, expErr: nil},
-		{name: "greps a multi-line file line with single count", fs: testFS, stdin: nil, fileName: file3Name, keyword: "match", ignoreCase: false, lineCount: true, result: []string{"1"}, expErr: nil},
-		{name: "greps a multi-line file line with double count", fs: testFS, stdin: nil, fileName: file4Name, keyword: "match", ignoreCase: false, lineCount: true, result: []string{"2"}, expErr: nil},
-		// {name: "greps a multi-line file lines after single match", fs: testFS, stdin: nil, fileName: file3Name, keyword: "match", ignoreCase: false, linesAfterMatch: 2, result: []string{"line6 match1", "line7", "line8"}, expErr: nil},
-		{name: "reads from stdin", fs: nil, stdin: []byte("this\nis\na\nfile"), fileName: "", keyword: "is", result: []string{"this", "is"}, expErr: nil},
-		{name: "reads a file with permission error", fs: testFS, stdin: nil, fileName: file2Name, expErr: fs.ErrPermission},
-		{name: "reads an empty directory", fs: testFS, stdin: nil, fileName: dir1Name, expErr: ErrIsDirectory},
-		{name: "reads a non-existent file", fs: testFS, stdin: nil, fileName: "non-existent-file.txt", expErr: fs.ErrNotExist},
+		{
+			name:       "greps a multi-line file",
+			fileName:   file1Name,
+			keyword:    "is",
+			ignoreCase: false,
+			result:     GrepResult{MatchedLines: []string{"this", "is"}},
+			expErr:     nil,
+		},
+		{
+			name:       "greps a multi-line file text sensitive",
+			fileName:   file1Name,
+			keyword:    "is",
+			ignoreCase: true,
+			result:     GrepResult{MatchedLines: []string{"this", "is", "Is"}},
+			expErr:     nil,
+		},
+		{
+			name:             "greps a multi-line file lines with before single match",
+			fileName:         file3Name,
+			keyword:          "match",
+			ignoreCase:       false,
+			linesBeforeMatch: 2,
+			result:           GrepResult{MatchedLines: []string{"line4", "line5", "line6 match1"}},
+			expErr:           nil,
+		},
+		{
+			name:             "greps a multi-line file lines with before double match",
+			fileName:         file4Name,
+			keyword:          "match",
+			ignoreCase:       false,
+			linesBeforeMatch: 2,
+			result:           GrepResult{MatchedLines: []string{"line4", "line5", "line6 match1", "line5", "line6 match1", "line7 match2"}},
+			expErr:           nil,
+		},
+		{
+			name:       "greps a multi-line file line with single count",
+			fileName:   file3Name,
+			keyword:    "match",
+			ignoreCase: false,
+			lineCount:  true,
+			result:     GrepResult{LineCount: 1},
+			// result: GrepResult{MatchedLines: []string{"line6 match1"}, LineCount: 1},
+			expErr: nil,
+		},
+		{
+			name:       "greps a multi-line file line with double count",
+			fileName:   file4Name,
+			keyword:    "match",
+			ignoreCase: false,
+			lineCount:  true,
+			result:     GrepResult{LineCount: 2},
+			// result: GrepResult{MatchedLines: []string{"line6 match1", "line7 match2"}, LineCount: 2},
+			expErr: nil,
+		},
+		{
+			name:    "reads from stdin",
+			stdin:   []byte("this\nis\na\nfile"),
+			keyword: "is",
+			result:  GrepResult{MatchedLines: []string{"this", "is"}},
+			expErr:  nil,
+		},
+		{
+			name:     "reads a file with permission error",
+			fileName: file2Name,
+			expErr:   fs.ErrPermission,
+		},
+		{
+			name:     "reads an empty directory",
+			fileName: dir1Name,
+			expErr:   ErrIsDirectory,
+		},
+		{
+			name:     "reads a non-existent file",
+			fileName: "non-existent-file.txt",
+			expErr:   fs.ErrNotExist,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			options := GrepOptions{Path: tc.fileName, Stdin: bytes.NewReader(tc.stdin), Keyword: tc.keyword, IgnoreCase: tc.ignoreCase, LinesBeforeMatch: tc.linesBeforeMatch, LineCount: tc.lineCount}
-			got, err := Grep(tc.fs, options)
+			got := Grep(testFS, options)
 			want := tc.result
 
 			if tc.expErr != nil {
-				if err == nil {
+				if got.Error == nil {
 					t.Fatalf("Expected an error but didn't got one")
 				}
 
-				if !errors.Is(err, tc.expErr) {
-					t.Fatalf("Expected error %v but got %v", tc.expErr, err)
+				if !errors.Is(got.Error, tc.expErr) {
+					t.Fatalf("Expected error %q but got %q", tc.expErr.Error(), got.Error.Error())
 				}
 
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("Didn't expected an error: %v", err)
+			if got.Error != nil {
+				t.Fatalf("Didn't expected an error: %v", got.Error)
 			}
 
 			if !reflect.DeepEqual(got, want) {
@@ -84,49 +148,72 @@ func TestSearchString(t *testing.T) {
 
 func TestSearchStringR(t *testing.T) {
 	var testFS fstest.MapFS = make(map[string]*fstest.MapFile)
-	testFS["tests"] = &fstest.MapFile{Data: nil, Mode: fs.ModeDir}
-	testFS["tests/test1.txt"] = &fstest.MapFile{Data: []byte("Dummy Line\nthis is a test file\none can test a program by running test cases"), Mode: 0755}
-	testFS["tests/filexyz.txt"] = &fstest.MapFile{Data: []byte("no matches here"), Mode: 0755}
-	testFS["tests/inner/test1.txt"] = &fstest.MapFile{Data: []byte("dummy file"), Mode: 0755}
-	testFS["tests/inner/test2.txt"] = &fstest.MapFile{Data: []byte("this file contains a test line"), Mode: 0755}
+	testFS["testdata"] = &fstest.MapFile{Data: nil, Mode: fs.ModeDir}
+	testFS["testdata/test1.txt"] = &fstest.MapFile{Data: []byte("Dummy Line\nthis is a test file\none can test a program by running test cases"), Mode: 0755}
+	testFS["testdata/filexyz.txt"] = &fstest.MapFile{Data: []byte("no matches here"), Mode: 0755}
+	testFS["testdata/inner/test1.txt"] = &fstest.MapFile{Data: []byte("dummy file"), Mode: 0755}
+	testFS["testdata/inner/test2.txt"] = &fstest.MapFile{Data: []byte("this file contains a test line"), Mode: 0755}
 
 	testCases := []struct {
 		name       string
-		fs         fs.FS
-		fileName   string
+		path       string
 		keyword    string
 		ignoreCase bool
 		linesBeforeMatch int
 		lineCount bool
-		result     [][]string
-		expErr     error
+		result     []GrepResult
 	}{
-		{name: "greps inside a directory with -r", fs: testFS, fileName: "tests", keyword: "test", ignoreCase: false,result: [][]string{{"tests/test1.txt:this is a test file", "tests/test1.txt:one can test a program by running test cases"}, {"tests/inner/test2.txt:this file contains a test line"}}, expErr: nil},
-		{name: "greps inside a directory with -r with lines before match option", fs: testFS, fileName: "tests", keyword: "test", ignoreCase: false, linesBeforeMatch: 1 ,result: [][]string{{"tests/test1.txt:Dummy Line", "tests/test1.txt:this is a test file","tests/test1.txt:this is a test file", "tests/test1.txt:one can test a program by running test cases"}, {"tests/inner/test2.txt:this file contains a test line"}}, expErr: nil},
-		{name: "greps inside a directory with -r with line count option", fs: testFS, fileName: "tests", keyword: "test", ignoreCase: false, lineCount: true, result: [][]string{{"tests/test1.txt:2"}, {"tests/inner/test2.txt:1"}}, expErr: nil},
+		{
+			name: "greps inside a directory with -r",
+			path: "testdata",
+			keyword: "test",
+			ignoreCase: false,
+			result: []GrepResult{
+				{Path:"testdata/test1.txt", MatchedLines: []string{"this is a test file", "one can test a program by running test cases"}},
+				{Path:"testdata/inner/test2.txt", MatchedLines: []string{"this file contains a test line"}},
+			},
+			// result: []GrepResult{
+			// 	GrepResult{Path:"testdata/test1.txt", MatchedLines: []string{"this is a test file", "one can test a program by running test cases"}, LineCount: 2},
+			// 	GrepResult{Path:"testdata/inner/test2.txt", MatchedLines: []string{"this file contains a test line"}, LineCount: 1},
+			// },
+		},
+		{
+			name: "greps inside a directory with -r with lines before match option",
+			path: "testdata",
+			keyword: "test",
+			ignoreCase: false,
+			linesBeforeMatch: 1,
+			result: []GrepResult{
+				{Path:"testdata/test1.txt", MatchedLines: []string{"Dummy Line", "this is a test file", "this is a test file", "one can test a program by running test cases"}},
+				{Path:"testdata/inner/test2.txt", MatchedLines: []string{"this file contains a test line"}},
+			},
+			// result: []GrepResult{
+			// 	{Path:"testdata/test1.txt", MatchedLines: []string{"Dummy Line", "this is a test file", "this is a test file", "one can test a program by running test cases"}, LineCount: 4},
+			// 	{Path:"testdata/inner/test2.txt", MatchedLines: []string{"this file contains a test line"}, LineCount: 1},
+			// },
+		},
+		{
+			name: "greps inside a directory with -r with line count option",
+			path: "testdata",
+			keyword: "test",
+			ignoreCase: false,
+			lineCount: true,
+			result: []GrepResult{
+				{Path:"testdata/test1.txt", LineCount: 2},
+				{Path:"testdata/inner/test2.txt", LineCount: 1},
+			},
+			// result: []GrepResult{
+			// 	GrepResult{Path:"testdata/test1.txt", MatchedLines: []string{"this is a test file", "one can test a program by running test cases"}, LineCount: 2},
+			// 	GrepResult{Path:"testdata/inner/test2.txt", MatchedLines: []string{"this file contains a test line"}, LineCount: 1},
+			// },
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			options := GrepOptions{Path: tc.fileName, Keyword: tc.keyword, IgnoreCase: tc.ignoreCase, LinesBeforeMatch: tc.linesBeforeMatch, LineCount: tc.lineCount}
-			got, err := GrepR(tc.fs, options)
+			options := GrepOptions{Path: tc.path, Keyword: tc.keyword, IgnoreCase: tc.ignoreCase, LinesBeforeMatch: tc.linesBeforeMatch, LineCount: tc.lineCount}
+			got := GrepR(testFS, options)
 			want := tc.result
-
-			if tc.expErr != nil {
-				if err == nil {
-					t.Fatalf("Expected an error but didn't got one")
-				}
-
-				if !errors.Is(err, tc.expErr) {
-					t.Fatalf("Expected error %v but got %v", tc.expErr, err)
-				}
-
-				return
-			}
-
-			if err != nil {
-				t.Fatalf("Didn't expected an error: %v", err)
-			}
 
 			// change the below checking of got & want into check of length (of sorts, maybe)
 			// because no gurantee if order of elements will be as expected or not
@@ -145,8 +232,12 @@ func TestSearchStringR(t *testing.T) {
 				}
 			}
 
+			// if !reflect.DeepEqual(got, want) {
+			// 	t.Errorf("Expected %v but got %v", want, got)
+			// }
+
 			if len(got) != len(want) {
-				t.Errorf("Expected length: %d, Got length: %d", len(want), len(got))
+				t.Errorf("Expected length: %d but got %d", len(want), len(got))
 			}
 		})
 	}

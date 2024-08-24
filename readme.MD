@@ -1,1 +1,4 @@
 Using -o, you can't write the output to sme other directory
+
+
+stuck on permisson error
