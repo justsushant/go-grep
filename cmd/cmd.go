@@ -14,6 +14,7 @@ import (
 func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName string, linesBeforeMatch int, linesAfterMatch int, ignoreCase, searchDir, lineCount bool) {
 	option := grep.GrepOptions{}
 
+	// stdin case
 	if path == "" {
 		option.Stdin = stdin
 		option.Keyword = keyword
@@ -24,7 +25,8 @@ func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName st
 		option.SearchDir = searchDir
 		option.LineCount = lineCount
 	} else {
-		relPath, err := getRelPath(fSys, path)
+		// file case
+		fullPath, err := getFullPath(fSys, path)
 		if err != nil {
 			fmt.Println(err)
 			return
@@ -32,7 +34,7 @@ func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName st
 
 		option.Keyword = keyword
 		option.OrigPath = path
-		option.Path = relPath
+		option.Path = fullPath
 		option.FileWName = fileWName
 		option.IgnoreCase = ignoreCase
 		option.LinesBeforeMatch = linesBeforeMatch
@@ -40,8 +42,6 @@ func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName st
 		option.SearchDir = searchDir
 		option.LineCount = lineCount
 	}
-
-	// fmt.Println(option)
 
 	var result []grep.GrepResult
 	if searchDir {
@@ -55,8 +55,8 @@ func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName st
 		result = append(result, grepResult)
 	}
 
-	// sepeating every line by "\n"
 	var outputArr []string
+	// preparing to print the result on the basis of options
 	for _, res := range result {
 		if searchDir && option.LineCount {
 			outputArr = append(outputArr, fmt.Sprintf("%s:%d\n", res.Path, res.LineCount))
@@ -71,7 +71,7 @@ func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName st
 		}
 	}
 
-	// writing to file if file name passed
+	// writing to file if file name was passed
 	if fileWName != "" {
 		err := writeToFile(fileWName, strings.Join(outputArr, ""))
 		if err != nil {
@@ -107,7 +107,8 @@ func writeToFile(filePath string, content string) error {
 	return nil
 }
 
-func getRelPath(fSys fs.FS, arg string) (relPath string, err error) {
+// gets the path from fSys (/ in this case) to the arg
+func getFullPath(fSys fs.FS, arg string) (relPath string, err error) {
 	absPath, err := filepath.Abs(filepath.Clean(arg))
 	if err != nil {
 		fmt.Println(err)

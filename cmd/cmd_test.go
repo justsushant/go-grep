@@ -2,14 +2,12 @@ package cmd
 
 import (
 	"bytes"
-	// "errors"
+	"errors"
 	"io"
-
 	"io/fs"
 	"os"
 	"strings"
 	"testing"
-
 	grep "github.com/one2n-go-bootcamp/go-grep/pkg"
 )
 
@@ -70,8 +68,13 @@ func TestRun(t *testing.T) {
 			keyword:   "test",
 			searchDir: true,
 			result: [][]string{
-				{"../testdata/cmd_test/test1.txt:this is a test file", "../testdata/cmd_test/test1.txt:one can test a program by running test cases"},
-				{"../testdata/cmd_test/inner/test2.txt:this file contains a test line"},
+				{
+					"../testdata/cmd_test/test1.txt:this is a test file",
+					"../testdata/cmd_test/test1.txt:one can test a program by running test cases",
+				},
+				{
+					"../testdata/cmd_test/inner/test2.txt:this file contains a test line",
+				},
 			},
 		},
 		{
@@ -88,8 +91,15 @@ func TestRun(t *testing.T) {
 			searchDir:        true,
 			linesBeforeMatch: 1,
 			result: [][]string{
-				{"../testdata/cmd_test/test1.txt:Dummy Line", "../testdata/cmd_test/test1.txt:this is a test file", "../testdata/cmd_test/test1.txt:this is a test file", "../testdata/cmd_test/test1.txt:one can test a program by running test cases"},
-				{"../testdata/cmd_test/inner/test2.txt:this file contains a test line"},
+				{
+					"../testdata/cmd_test/test1.txt:Dummy Line",
+					"../testdata/cmd_test/test1.txt:this is a test file",
+					"../testdata/cmd_test/test1.txt:this is a test file",
+					"../testdata/cmd_test/test1.txt:one can test a program by running test cases",
+				},
+				{
+					"../testdata/cmd_test/inner/test2.txt:this file contains a test line",
+				},
 			},
 		},
 		{
@@ -117,7 +127,10 @@ func TestRun(t *testing.T) {
 			keyword:   "test",
 			searchDir: true,
 			lineCount: true,
-			result:    [][]string{{"../testdata/cmd_test/test1.txt:2"}, {"../testdata/cmd_test/inner/test2.txt:1"}},
+			result:    [][]string{
+				{"../testdata/cmd_test/test1.txt:2"}, 
+				{"../testdata/cmd_test/inner/test2.txt:1"},
+			},
 		},
 	}
 
@@ -143,7 +156,7 @@ func TestRun(t *testing.T) {
 				t.Errorf("Expected number of line %d but got %d", len(strings.Split(want, "\n")), len(strings.Split(got.String(), "\n")))
 			}
 
-			// checking if each line wanted is present in output
+			// checking if each expected line is present in output
 			for _, w := range strings.Split(want, "\n") {
 				matchFlag := false
 				for _, g := range strings.Split(got.String(), "\n") {
@@ -161,53 +174,53 @@ func TestRun(t *testing.T) {
 	}
 }
 
-// func TestWriteToFile(t *testing.T) {
-// 	testCases := []struct {
-// 		name     string
-// 		filePath string
-// 		content  string
-// 		expErr   error
-// 	}{
-// 		{name: "write to file", filePath: "test.txt", content: "test only", expErr: nil},
-// 		{name: "write to already created file", filePath: "test.txt", content: "test only", expErr: os.ErrExist},
-// 	}
+func TestWriteToFile(t *testing.T) {
+	testCases := []struct {
+		name     string
+		filePath string
+		content  string
+		expErr   error
+	}{
+		{name: "write to file", filePath: "test.txt", content: "test only", expErr: nil},
+		{name: "write to already created file", filePath: "test.txt", content: "test only", expErr: os.ErrExist},
+	}
 
-// 	for _, tc := range testCases {
-// 		t.Run(tc.name, func(t *testing.T) {
-// 			if tc.expErr != nil {
-// 				os.Create(tc.filePath)
-// 			}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.expErr != nil {
+				os.Create(tc.filePath)
+			}
 
-// 			err := writeToFile(tc.filePath, tc.content)
-// 			defer os.Remove(tc.filePath)
+			err := writeToFile(tc.filePath, tc.content)
+			defer os.Remove(tc.filePath)
 
-// 			if tc.expErr != nil {
-// 				if err == nil {
-// 					t.Fatalf("Expected error but didn't got one")
-// 				}
+			if tc.expErr != nil {
+				if err == nil {
+					t.Fatalf("Expected error but didn't got one")
+				}
 
-// 				if !errors.Is(err, tc.expErr) {
-// 					t.Errorf("Expected error %v but got %v", tc.expErr, err)
-// 				}
+				if !errors.Is(err, tc.expErr) {
+					t.Errorf("Expected error %v but got %v", tc.expErr, err)
+				}
 
-// 				return
-// 			}
+				return
+			}
 
-// 			if err != nil {
-// 				t.Fatalf("Unexpected error: %v", err)
-// 			}
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
 
-// 			data, err := os.ReadFile(tc.filePath)
-// 			if err != nil {
-// 				t.Fatalf("Unexpected error: %v", err)
-// 			}
+			data, err := os.ReadFile(tc.filePath)
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
 
-// 			if string(data) != tc.content {
-// 				t.Errorf("Expected %q but got %q", string(data), tc.content)
-// 			}
-// 		})
-// 	}
-// }
+			if string(data) != tc.content {
+				t.Errorf("Expected %q but got %q", string(data), tc.content)
+			}
+		})
+	}
+}
 
 func getExpectedOutput(t *testing.T, result [][]string) string {
 	t.Helper()
