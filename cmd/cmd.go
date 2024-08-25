@@ -49,7 +49,7 @@ func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName st
 	} else {
 		grepResult := grep.Grep(fSys, option)
 		if grepResult.Error != nil {
-			fmt.Fprint(out, grepResult.Error.Error())
+			fmt.Fprintln(out, grepResult.Error.Error())
 			return
 		}
 		result = append(result, grepResult)

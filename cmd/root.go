@@ -36,6 +36,15 @@ var rootCmd = &cobra.Command{
 	Use:   "grep",
 	Short: "command line program that implements Unix grep like functionality",
 	Run: func(cmd *cobra.Command, args []string) {
+		a := os.Args[1:]
+		if len(a) < 2 {
+			fmt.Println("error: Missing required arguments")
+			cmd.Usage()
+			os.Exit(1)
+		}
+		keyword := a[0]
+		path := a[1]
+
 		fileWriteName, err := cmd.Flags().GetString(fileNameFlag)
 		if err != nil {
 			fmt.Fprintln(cmd.OutOrStdout(), err)
@@ -60,8 +69,6 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			fmt.Fprintln(cmd.OutOrStdout(), err)
 		}
-		keyword := args[0]
-		path := args[1]
 
 		run(os.DirFS("/"), cmd.InOrStdin(), cmd.OutOrStdout(), keyword, path, fileWriteName, linesBeforeMatch, linesAfterMatch, ignoreCase, searchDir, lineCount)
 		os.Exit(0)
