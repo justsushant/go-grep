@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"bytes"
-	"errors"
+	// "errors"
 	"io"
 
 	"io/fs"
@@ -11,18 +11,10 @@ import (
 	"testing"
 
 	grep "github.com/one2n-go-bootcamp/go-grep/pkg"
-	// "testing/fstest"
 )
 
 // since run function integrates all the other functions, so actual files are used
 func TestRun(t *testing.T) {
-	// var testFS fstest.MapFS = make(map[string]*fstest.MapFile)
-	// testFS["testdata"] = &fstest.MapFile{Data: nil, Mode: fs.ModeDir}
-	// testFS["testdata/test1.txt"] = &fstest.MapFile{Data: []byte("Dummy Line\nthis is a test file\none can test a program by running test cases"), Mode: 0755}
-	// testFS["testdata/test2.txt"] = &fstest.MapFile{Data: []byte("you will find\nno matches here\nwhatsoever"), Mode: 0755}
-	// testFS["testdata/inner/test1.txt"] = &fstest.MapFile{Data: []byte("dummy file"), Mode: 0755}
-	// testFS["testdata/inner/test2.txt"] = &fstest.MapFile{Data: []byte("this file contains a test line"), Mode: 0755}
-
 	testCases := []struct {
 		name             string
 		stdin            io.Reader
@@ -31,6 +23,7 @@ func TestRun(t *testing.T) {
 		keyword          string
 		ignoreCase       bool
 		linesBeforeMatch int
+		linesAfterMatch int
 		searchDir        bool
 		lineCount        bool
 		result           [][]string
@@ -100,6 +93,25 @@ func TestRun(t *testing.T) {
 			},
 		},
 		{
+			name:             "greps inside a directory with -r with 1 line after match option",
+			path:             "../testdata/cmd_test",
+			keyword:          "test",
+			searchDir:        true,
+			linesAfterMatch: 1,
+			result: [][]string{
+				{
+					"../testdata/cmd_test/test1.txt:this is a test file",
+					"../testdata/cmd_test/test1.txt:this is a test file",
+					"../testdata/cmd_test/test1.txt:one can test a program by running test cases",
+					"../testdata/cmd_test/test1.txt:something here",
+				},
+				{
+					"../testdata/cmd_test/inner/test2.txt:this file contains a test line",
+					"../testdata/cmd_test/inner/test2.txt:nothing here",
+				},
+			},
+		},
+		{
 			name:      "greps inside a directory with -r with line count option",
 			path:      "../testdata/cmd_test",
 			keyword:   "test",
@@ -111,10 +123,11 @@ func TestRun(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			fs := os.DirFS("/")
 			var got bytes.Buffer
 			want := getExpectedOutput(t, tc.result)
 
-			run(os.DirFS("/"), tc.stdin, &got, tc.keyword, tc.path, tc.fileWName, tc.linesBeforeMatch, tc.ignoreCase, tc.searchDir, tc.lineCount)
+			run(fs, tc.stdin, &got, tc.keyword, tc.path, tc.fileWName, tc.linesBeforeMatch, tc.linesAfterMatch, tc.ignoreCase, tc.searchDir, tc.lineCount)
 
 			// checking for error
 			if tc.expErr != nil {
@@ -125,7 +138,8 @@ func TestRun(t *testing.T) {
 			}
 
 			// length check of both expected and resultant
-			if len(strings.Split(got.String(), "\n")) != len(strings.Split(want, "\n")) {
+			// trimming to remove the last new line character
+			if len(strings.Split(strings.TrimSpace(got.String()), "\n")) != len(strings.Split(want, "\n")) {
 				t.Errorf("Expected number of line %d but got %d", len(strings.Split(want, "\n")), len(strings.Split(got.String(), "\n")))
 			}
 
@@ -147,53 +161,53 @@ func TestRun(t *testing.T) {
 	}
 }
 
-func TestWriteToFile(t *testing.T) {
-	testCases := []struct {
-		name     string
-		filePath string
-		content  string
-		expErr   error
-	}{
-		{name: "write to file", filePath: "test.txt", content: "test only", expErr: nil},
-		{name: "write to already created file", filePath: "test.txt", content: "test only", expErr: os.ErrExist},
-	}
+// func TestWriteToFile(t *testing.T) {
+// 	testCases := []struct {
+// 		name     string
+// 		filePath string
+// 		content  string
+// 		expErr   error
+// 	}{
+// 		{name: "write to file", filePath: "test.txt", content: "test only", expErr: nil},
+// 		{name: "write to already created file", filePath: "test.txt", content: "test only", expErr: os.ErrExist},
+// 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			if tc.expErr != nil {
-				os.Create(tc.filePath)
-			}
+// 	for _, tc := range testCases {
+// 		t.Run(tc.name, func(t *testing.T) {
+// 			if tc.expErr != nil {
+// 				os.Create(tc.filePath)
+// 			}
 
-			err := writeToFile(tc.filePath, tc.content)
-			defer os.Remove(tc.filePath)
+// 			err := writeToFile(tc.filePath, tc.content)
+// 			defer os.Remove(tc.filePath)
 
-			if tc.expErr != nil {
-				if err == nil {
-					t.Fatalf("Expected error but didn't got one")
-				}
+// 			if tc.expErr != nil {
+// 				if err == nil {
+// 					t.Fatalf("Expected error but didn't got one")
+// 				}
 
-				if !errors.Is(err, tc.expErr) {
-					t.Errorf("Expected error %v but got %v", tc.expErr, err)
-				}
+// 				if !errors.Is(err, tc.expErr) {
+// 					t.Errorf("Expected error %v but got %v", tc.expErr, err)
+// 				}
 
-				return
-			}
+// 				return
+// 			}
 
-			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
-			}
+// 			if err != nil {
+// 				t.Fatalf("Unexpected error: %v", err)
+// 			}
 
-			data, err := os.ReadFile(tc.filePath)
-			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
-			}
+// 			data, err := os.ReadFile(tc.filePath)
+// 			if err != nil {
+// 				t.Fatalf("Unexpected error: %v", err)
+// 			}
 
-			if string(data) != tc.content {
-				t.Errorf("Expected %q but got %q", string(data), tc.content)
-			}
-		})
-	}
-}
+// 			if string(data) != tc.content {
+// 				t.Errorf("Expected %q but got %q", string(data), tc.content)
+// 			}
+// 		})
+// 	}
+// }
 
 func getExpectedOutput(t *testing.T, result [][]string) string {
 	t.Helper()

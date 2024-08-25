@@ -11,7 +11,7 @@ import (
 	grep "github.com/one2n-go-bootcamp/go-grep/pkg"
 )
 
-func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName string, linesBeforeMatch int, ignoreCase, searchDir, lineCount bool) {
+func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName string, linesBeforeMatch int, linesAfterMatch int, ignoreCase, searchDir, lineCount bool) {
 	option := grep.GrepOptions{}
 
 	if path == "" {
@@ -20,6 +20,7 @@ func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName st
 		option.FileWName = fileWName
 		option.IgnoreCase = ignoreCase
 		option.LinesBeforeMatch = linesBeforeMatch
+		option.LinesAfterMatch = linesAfterMatch
 		option.SearchDir = searchDir
 		option.LineCount = lineCount
 	} else {
@@ -35,6 +36,7 @@ func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName st
 		option.FileWName = fileWName
 		option.IgnoreCase = ignoreCase
 		option.LinesBeforeMatch = linesBeforeMatch
+		option.LinesAfterMatch = linesAfterMatch
 		option.SearchDir = searchDir
 		option.LineCount = lineCount
 	}

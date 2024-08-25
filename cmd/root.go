@@ -27,6 +27,7 @@ var (
 	ignoreCaseFlag = "ignoreCase"
 	searchDirFlag = "searchDir"
 	linesBeforeMatchFlag = "linesBeforeMatch"
+	linesAfterMatchFlag = "linesAfterMatch"
 	lineCountFlag = "lineCount"
 )
 
@@ -51,6 +52,10 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			fmt.Fprintln(cmd.OutOrStdout(), err)
 		}
+		linesAfterMatch, err := cmd.Flags().GetInt(linesAfterMatchFlag)
+		if err != nil {
+			fmt.Fprintln(cmd.OutOrStdout(), err)
+		}
 		lineCount, err := cmd.Flags().GetBool(lineCountFlag)
 		if err != nil {
 			fmt.Fprintln(cmd.OutOrStdout(), err)
@@ -58,7 +63,7 @@ var rootCmd = &cobra.Command{
 		keyword := args[0]
 		path := args[1]
 
-		run(os.DirFS("/"), cmd.InOrStdin(), cmd.OutOrStdout(), keyword, path, fileWriteName, linesBeforeMatch, ignoreCase, searchDir, lineCount)
+		run(os.DirFS("/"), cmd.InOrStdin(), cmd.OutOrStdout(), keyword, path, fileWriteName, linesBeforeMatch, linesAfterMatch, ignoreCase, searchDir, lineCount)
 		os.Exit(0)
 	},
 }
@@ -84,6 +89,7 @@ func init() {
 	rootCmd.Flags().StringP(fileNameFlag, "o", "", "writes output to the file")
 	rootCmd.Flags().BoolP(ignoreCaseFlag, "i", false, "ignores case")
 	rootCmd.Flags().BoolP(searchDirFlag, "r", false, "searches directory")
+	rootCmd.Flags().IntP(linesAfterMatchFlag, "A", 0, "includes the line(s) after the match")
 	rootCmd.Flags().IntP(linesBeforeMatchFlag, "B", 0, "includes the line(s) before the match")
 	rootCmd.Flags().BoolP(lineCountFlag, "C", false, "includes the line count")
 }

@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -24,6 +22,7 @@ type GrepOptions struct {
 	FileWName string
 	IgnoreCase bool
 	LinesBeforeMatch int
+	LinesAfterMatch int
 	SearchDir bool
 	LineCount bool
 }
@@ -35,27 +34,11 @@ type GrepResult struct {
 	Error error
 }
 
-func getRelPath(fSys fs.FS, arg string) (relPath string, err error) {
-	absPath, err := filepath.Abs(filepath.Clean(arg))
-	if err != nil {
-		fmt.Println(err)
-		return "", err
-	}
-
-	root := fmt.Sprintf("%s", fSys)
-	relPath, err = filepath.Rel(root, absPath)
-	if err != nil {
-		return "", err
-	}
-
-	return relPath, nil
-}
-
-func GrepR(fSys fs.FS, options GrepOptions) []GrepResult {
+func GrepR(fSys fs.FS, parentOption GrepOptions) []GrepResult {
 	var wg sync.WaitGroup
 	var outputChans []chan GrepResult
 
-	fs.WalkDir(fSys, options.Path, func(path string, d fs.DirEntry, err error) error {
+	fs.WalkDir(fSys, parentOption.Path, func(path string, d fs.DirEntry, err error) error {
 		outputChan := make(chan GrepResult)
 		outputChans = append(outputChans, outputChan)
 
@@ -63,7 +46,6 @@ func GrepR(fSys fs.FS, options GrepOptions) []GrepResult {
 		go func(outputChan chan GrepResult) {
 			defer wg.Done()
 			defer close(outputChan)
-			var x = options.OrigPath
 
 			if err != nil {
 				outputChan <- GrepResult{Error: err}
@@ -74,15 +56,9 @@ func GrepR(fSys fs.FS, options GrepOptions) []GrepResult {
 				return
 			}
 
-			 // Compute the relative path
-			 relPath, err := filepath.Rel(options.Path, path)
-			 if err != nil {
-				 outputChan <- GrepResult{Error: err}
-				 return
-			 }
-
-			options := GrepOptions{Path: path, OrigPath: relPath, Keyword: options.Keyword, IgnoreCase: options.IgnoreCase, LinesBeforeMatch: options.LinesBeforeMatch, LineCount: options.LineCount}
-			result := Grep(fSys, options)
+			grepOption := GrepOptions{Path: path, OrigPath: parentOption.Path, Keyword: parentOption.Keyword, IgnoreCase: parentOption.IgnoreCase, LinesBeforeMatch: parentOption.LinesBeforeMatch, LinesAfterMatch: parentOption.LinesAfterMatch, LineCount: parentOption.LineCount}
+			// grepOption := GrepOptions{Path: path, OrigPath: relPath, Keyword: parentOption.Keyword, IgnoreCase: parentOption.IgnoreCase, LinesBeforeMatch: parentOption.LinesBeforeMatch, LineCount: parentOption.LineCount}
+			result := Grep(fSys, grepOption)
 			if result.Error != nil {
 				outputChan <- result
 				return
@@ -91,8 +67,8 @@ func GrepR(fSys fs.FS, options GrepOptions) []GrepResult {
 			if len(result.MatchedLines) == 0 && result.LineCount == 0 {
 				return
 			}
-			
-			result.Path = filepath.Clean(x + string(os.PathSeparator) + options.OrigPath)
+
+			result.Path = normalisePathFromRoot(path, parentOption.OrigPath)
 			outputChan <- result
 		} (outputChan)
 
@@ -123,9 +99,9 @@ func Grep(fSys fs.FS, option GrepOptions) GrepResult {
 	}
 
 	res := GrepResult{
-		Path: option.OrigPath,
+		Path: option.Path,
 	}
-	// res := GrepResult{MatchedLines: result}
+	
 	if option.LineCount {
 		res.LineCount = len(result)
 	} else {
@@ -152,7 +128,8 @@ func getReader(fSys fs.FS, option GrepOptions) (io.Reader, func(), error) {
 }
 
 func searchString(r io.Reader, options GrepOptions) ([]string, error) {
-	grepBuffBefore := NewGrepBuffer(options.LinesBeforeMatch)
+	grepBuffer := NewGrepBuffer(options.LinesBeforeMatch + options.LinesAfterMatch)
+	afterMatchCount := 0
 	
 	keyword := options.Keyword
 	if options.IgnoreCase {		// normalising keyword if ignoreCase
@@ -164,6 +141,12 @@ func searchString(r io.Reader, options GrepOptions) ([]string, error) {
 	scanner.Split(bufio.ScanLines)
 	for scanner.Scan() {
 		line := scanner.Text()
+		
+		// saves lines after match in buffer
+		if afterMatchCount > 0 {
+			result = append(result, scanner.Text())
+			afterMatchCount--
+		}
 
 		// normalising line if ignoreCase
 		if options.IgnoreCase {
@@ -173,14 +156,18 @@ func searchString(r io.Reader, options GrepOptions) ([]string, error) {
 		// comparison and saving lines if matched
 		if strings.Contains(line, keyword) {
 			if options.LinesBeforeMatch > 0 {
-				result = append(result, grepBuffBefore.Dump()...)
+				result = append(result, grepBuffer.Dump()...)
 			}
 			result = append(result, scanner.Text())
+			
+			if options.LinesAfterMatch > 0 {
+				afterMatchCount = options.LinesAfterMatch
+			}
 		}
 		
 		// save lines to buffer
 		if options.LinesBeforeMatch > 0 {
-			grepBuffBefore.Push(scanner.Text())
+			grepBuffer.Push(scanner.Text())
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -213,4 +200,9 @@ func isValid(fSys fs.FS, path, origPath string) error {
 	return nil
 }
 
+func normalisePathFromRoot(rootPath, userPath string) string {
+	userPathClean := strings.TrimPrefix(userPath, "../")
+    idx := strings.Index(rootPath, userPathClean)
 
+	return userPath + rootPath[idx+len(userPathClean):]
+}

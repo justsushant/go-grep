@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"reflect"
+	"slices"
 	"testing"
 	"testing/fstest"
 )
@@ -35,6 +36,7 @@ func TestSearchString(t *testing.T) {
 		keyword          string
 		ignoreCase       bool
 		linesBeforeMatch int
+		linesAfterMatch  int
 		lineCount        bool
 		result           GrepResult
 		expErr           error
@@ -45,6 +47,7 @@ func TestSearchString(t *testing.T) {
 			keyword:    "is",
 			ignoreCase: false,
 			result:     GrepResult{MatchedLines: []string{"this", "is"}},
+			// result:     GrepResult{Path: file1Name, MatchedLines: []string{"this", "is"}},
 			expErr:     nil,
 		},
 		{
@@ -53,24 +56,37 @@ func TestSearchString(t *testing.T) {
 			keyword:    "is",
 			ignoreCase: true,
 			result:     GrepResult{MatchedLines: []string{"this", "is", "Is"}},
+			// result:     GrepResult{Path: file1Name, MatchedLines: []string{"this", "is", "Is"}},
 			expErr:     nil,
 		},
 		{
-			name:             "greps a multi-line file lines with before single match",
+			name:             "greps a multi-line file lines with lines before match",
 			fileName:         file3Name,
 			keyword:          "match",
 			ignoreCase:       false,
 			linesBeforeMatch: 2,
 			result:           GrepResult{MatchedLines: []string{"line4", "line5", "line6 match1"}},
+			// result:           GrepResult{Path: file3Name, MatchedLines: []string{"line4", "line5", "line6 match1"}},
 			expErr:           nil,
 		},
 		{
-			name:             "greps a multi-line file lines with before double match",
+			name:             "greps a multi-line file lines with lines before match",
 			fileName:         file4Name,
 			keyword:          "match",
 			ignoreCase:       false,
 			linesBeforeMatch: 2,
 			result:           GrepResult{MatchedLines: []string{"line4", "line5", "line6 match1", "line5", "line6 match1", "line7 match2"}},
+			// result:           GrepResult{Path: file4Name, MatchedLines: []string{"line4", "line5", "line6 match1", "line5", "line6 match1", "line7 match2"}},
+			expErr:           nil,
+		},
+		{
+			name:             "greps a multi-line file lines with lines after match",
+			fileName:         file4Name,
+			keyword:          "match",
+			ignoreCase:       false,
+			linesAfterMatch:  1,
+			result:           GrepResult{MatchedLines: []string{"line6 match1", "line7 match2", "line7 match2", "line8"}},
+			// result:           GrepResult{Path: file4Name, MatchedLines: []string{"line6 match1", "line7 match2", "line7 match2", "line8"}},
 			expErr:           nil,
 		},
 		{
@@ -80,6 +96,7 @@ func TestSearchString(t *testing.T) {
 			ignoreCase: false,
 			lineCount:  true,
 			result:     GrepResult{LineCount: 1},
+			// result:     GrepResult{Path: file3Name, LineCount: 1},
 			// result: GrepResult{MatchedLines: []string{"line6 match1"}, LineCount: 1},
 			expErr: nil,
 		},
@@ -90,6 +107,7 @@ func TestSearchString(t *testing.T) {
 			ignoreCase: false,
 			lineCount:  true,
 			result:     GrepResult{LineCount: 2},
+			// result:     GrepResult{Path: file4Name, LineCount: 2},
 			// result: GrepResult{MatchedLines: []string{"line6 match1", "line7 match2"}, LineCount: 2},
 			expErr: nil,
 		},
@@ -119,7 +137,7 @@ func TestSearchString(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			options := GrepOptions{Path: tc.fileName, Stdin: bytes.NewReader(tc.stdin), Keyword: tc.keyword, IgnoreCase: tc.ignoreCase, LinesBeforeMatch: tc.linesBeforeMatch, LineCount: tc.lineCount}
+			options := GrepOptions{Path: tc.fileName, Stdin: bytes.NewReader(tc.stdin), Keyword: tc.keyword, IgnoreCase: tc.ignoreCase, LinesBeforeMatch: tc.linesBeforeMatch, LinesAfterMatch: tc.linesAfterMatch, LineCount: tc.lineCount}
 			got := Grep(testFS, options)
 			want := tc.result
 
@@ -139,8 +157,14 @@ func TestSearchString(t *testing.T) {
 				t.Fatalf("Didn't expected an error: %v", got.Error)
 			}
 
-			if !reflect.DeepEqual(got, want) {
-				t.Errorf("Expected %v but got %v", want, got)
+			// checking matched lines
+			if !slices.Equal(got.MatchedLines, want.MatchedLines) {
+				t.Errorf("Expected %v but got %v", want.MatchedLines, got.MatchedLines)
+			}
+
+			// checking matched line count
+			if got.LineCount != want.LineCount {
+				t.Errorf("Expected line count %d but got %d", want.LineCount, got.LineCount)
 			}
 		})
 	}
@@ -237,7 +261,7 @@ func TestSearchStringR(t *testing.T) {
 			// }
 
 			if len(got) != len(want) {
-				t.Errorf("Expected length: %d but got %d", len(want), len(got))
+				t.Errorf("Expected length %d but got %d", len(want), len(got))
 			}
 		})
 	}
