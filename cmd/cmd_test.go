@@ -57,11 +57,11 @@ func TestRun(t *testing.T) {
 			keyword: "vibgyor",
 			expErr:  grep.ErrIsDirectory,
 		},
-		// {
-		// 	name: "reads a file with permission error",
-		// 	path: "testdata/cmd_test/perm_err/test1.txt",
-		// 	expErr: fs.ErrPermission,
-		// },
+		{
+			name: "reads a file with permission error",
+			path: "../testdata/cmd_test/perm_err/test1.txt",
+			expErr: fs.ErrPermission,
+		},
 		{
 			name:      "greps inside a directory with -r",
 			path:      "../testdata/cmd_test",
@@ -133,6 +133,13 @@ func TestRun(t *testing.T) {
 			},
 		},
 	}
+	
+	// creates a file for permission error case, and deletes it in cleanup
+	cleanup, err := setTestForPermissonCase(t, "../testdata/cmd_test/perm_err/test1.txt", "test for permisson case")
+	if err != nil {
+		t.Fatalf("Unexpected error while setting up test: %v", err)
+	}
+	defer cleanup()
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -229,4 +236,33 @@ func getExpectedOutput(t *testing.T, result [][]string) string {
 		wantArr = append(wantArr, strings.Join(res, "\n"))
 	}
 	return strings.Join(wantArr, "\n")
+}
+
+func setTestForPermissonCase(t *testing.T, filePath, content string) (func() error, error) {
+	// creating file
+    file, err := os.Create(filePath)
+    if err != nil {
+        return nil, err
+    }
+
+	// writing to file
+    if _, err := file.WriteString(content); err != nil {
+        return nil, err
+    }
+
+	// setting permisson to 0000
+    if err := os.Chmod(filePath, 0000); err != nil {
+        return nil, err
+    }
+
+    // Define the cleanup function
+    cleanup := func() error {
+		file.Close()
+        if err := os.Remove(filePath); err != nil {
+            return err
+        }
+        return nil
+    }
+
+    return cleanup, nil
 }
