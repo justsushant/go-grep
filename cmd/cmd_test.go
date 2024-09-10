@@ -239,6 +239,8 @@ func getExpectedOutput(t *testing.T, result [][]string) string {
 }
 
 func setTestForPermissonCase(t *testing.T, filePath, content string) (func() error, error) {
+	t.Helper()
+	
 	// creating file
     file, err := os.Create(filePath)
     if err != nil {
