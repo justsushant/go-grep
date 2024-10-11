@@ -17,6 +17,7 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -41,7 +42,7 @@ var rootCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		a := os.Args[1:]
 		if len(a) < 2 {
-			fmt.Println("error: Missing required arguments")
+			log.Println("error: Missing required arguments")
 			cmd.Usage()
 			os.Exit(1)
 		}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,7 +46,7 @@ func run(fSys fs.FS, input *GrepInput) {
 		// file case
 		fullPath, err := getFullPath(fSys, input.path)
 		if err != nil {
-			fmt.Println(err)
+			log.Println("Error occured while fetching the path of file: ", err)
 			return
 		}
 
@@ -135,7 +136,6 @@ func writeToFile(filePath string, content string) error {
 func getFullPath(fSys fs.FS, arg string) (relPath string, err error) {
 	absPath, err := filepath.Abs(filepath.Clean(arg))
 	if err != nil {
-		fmt.Println(err)
 		return "", err
 	}
 
