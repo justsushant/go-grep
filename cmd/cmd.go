@@ -11,45 +11,59 @@ import (
 	grep "github.com/one2n-go-bootcamp/go-grep/pkg"
 )
 
-func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName string, linesBeforeMatch int, linesAfterMatch int, ignoreCase, searchDir, lineCount bool) {
+// to handle the grep input from user
+type GrepInput struct {
+	keyword          string
+	path             string
+	fileWriteName    string
+	linesBeforeMatch int
+	linesAfterMatch  int
+	ignoreCase       bool
+	searchDir        bool
+	lineCount        bool
+	stdin            io.Reader
+	output           io.Writer
+}
+
+func run(fSys fs.FS, input *GrepInput) {
 	option := grep.GrepOptions{}
 
 	// stdin case
-	if path == "" {
-		option.Stdin = stdin
-		option.Keyword = keyword
-		option.FileWName = fileWName
-		option.IgnoreCase = ignoreCase
-		option.LinesBeforeMatch = linesBeforeMatch
-		option.LinesAfterMatch = linesAfterMatch
-		option.SearchDir = searchDir
-		option.LineCount = lineCount
+	if input.path == "" {
+		option.Stdin = input.stdin
+		option.Keyword = input.keyword
+		option.FileWName = input.fileWriteName
+		option.IgnoreCase = input.ignoreCase
+		option.LinesBeforeMatch = input.linesBeforeMatch
+		option.LinesAfterMatch = input.linesAfterMatch
+		option.SearchDir = input.searchDir
+		option.LineCount = input.lineCount
 	} else {
 		// file case
-		fullPath, err := getFullPath(fSys, path)
+		fullPath, err := getFullPath(fSys, input.path)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 
-		option.Keyword = keyword
-		option.OrigPath = path
+		option.Keyword = input.keyword
+		option.OrigPath = input.path
 		option.Path = fullPath
-		option.FileWName = fileWName
-		option.IgnoreCase = ignoreCase
-		option.LinesBeforeMatch = linesBeforeMatch
-		option.LinesAfterMatch = linesAfterMatch
-		option.SearchDir = searchDir
-		option.LineCount = lineCount
+		option.FileWName = input.fileWriteName
+		option.IgnoreCase = input.ignoreCase
+		option.LinesBeforeMatch = input.linesBeforeMatch
+		option.LinesAfterMatch = input.linesAfterMatch
+		option.SearchDir = input.searchDir
+		option.LineCount = input.lineCount
 	}
 
 	var result []grep.GrepResult
-	if searchDir {
+	if input.searchDir {
 		result = grep.GrepR(fSys, option)
 	} else {
 		grepResult := grep.Grep(fSys, option)
 		if grepResult.Error != nil {
-			fmt.Fprintln(out, grepResult.Error.Error())
+			fmt.Fprintln(input.output, grepResult.Error.Error())
 			return
 		}
 		result = append(result, grepResult)
@@ -58,9 +72,9 @@ func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName st
 	var outputArr []string
 	// preparing to print the result on the basis of options
 	for _, res := range result {
-		if searchDir && option.LineCount {
+		if input.searchDir && option.LineCount {
 			outputArr = append(outputArr, fmt.Sprintf("%s:%d\n", res.Path, res.LineCount))
-		} else if searchDir && !option.LineCount {
+		} else if input.searchDir && !option.LineCount {
 			for _, line := range res.MatchedLines {
 				outputArr = append(outputArr, fmt.Sprintf("%s:%s\n", res.Path, line))
 			}
@@ -72,16 +86,16 @@ func run(fSys fs.FS, stdin io.Reader, out io.Writer, keyword, path, fileWName st
 	}
 
 	// writing to file if file name was passed
-	if fileWName != "" {
-		err := writeToFile(fileWName, strings.Join(outputArr, ""))
+	if input.fileWriteName != "" {
+		err := writeToFile(input.fileWriteName, strings.Join(outputArr, ""))
 		if err != nil {
-			fmt.Fprint(out, err.Error())
+			fmt.Fprint(input.output, err.Error())
 			return
 		}
 		return
 	}
 
-	fmt.Fprint(out, strings.Join(outputArr, ""))
+	fmt.Fprint(input.output, strings.Join(outputArr, ""))
 }
 
 func writeToFile(filePath string, content string) error {

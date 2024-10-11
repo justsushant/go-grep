@@ -23,12 +23,12 @@ import (
 )
 
 var (
-	fileNameFlag = "fileName"
-	ignoreCaseFlag = "ignoreCase"
-	searchDirFlag = "searchDir"
+	fileNameFlag         = "fileName"
+	ignoreCaseFlag       = "ignoreCase"
+	searchDirFlag        = "searchDir"
 	linesBeforeMatchFlag = "linesBeforeMatch"
-	linesAfterMatchFlag = "linesAfterMatch"
-	lineCountFlag = "lineCount"
+	linesAfterMatchFlag  = "linesAfterMatch"
+	lineCountFlag        = "lineCount"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -70,7 +70,20 @@ var rootCmd = &cobra.Command{
 			fmt.Fprintln(cmd.OutOrStdout(), err)
 		}
 
-		run(os.DirFS("/"), cmd.InOrStdin(), cmd.OutOrStdout(), keyword, path, fileWriteName, linesBeforeMatch, linesAfterMatch, ignoreCase, searchDir, lineCount)
+		input := &GrepInput{
+			keyword:          keyword,
+			path:             path,
+			fileWriteName:    fileWriteName,
+			linesBeforeMatch: linesBeforeMatch,
+			linesAfterMatch:  linesAfterMatch,
+			ignoreCase:       ignoreCase,
+			searchDir:        searchDir,
+			lineCount:        lineCount,
+			stdin:            cmd.InOrStdin(),
+			output:           cmd.OutOrStdout(),
+		}
+
+		run(os.DirFS("/"), input)
 		os.Exit(0)
 	},
 }

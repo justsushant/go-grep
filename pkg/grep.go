@@ -15,23 +15,23 @@ var (
 )
 
 type GrepOptions struct {
-	OrigPath string
-	Path string
-	Stdin io.Reader
-	Keyword string
-	FileWName string
-	IgnoreCase bool
+	OrigPath         string
+	Path             string
+	Stdin            io.Reader
+	Keyword          string
+	FileWName        string
+	IgnoreCase       bool
 	LinesBeforeMatch int
-	LinesAfterMatch int
-	SearchDir bool
-	LineCount bool
+	LinesAfterMatch  int
+	SearchDir        bool
+	LineCount        bool
 }
 
 type GrepResult struct {
-	Path string
+	Path         string
 	MatchedLines []string
-	LineCount int
-	Error error
+	LineCount    int
+	Error        error
 }
 
 func GrepR(fSys fs.FS, parentOption GrepOptions) []GrepResult {
@@ -59,20 +59,20 @@ func GrepR(fSys fs.FS, parentOption GrepOptions) []GrepResult {
 
 			// prepares the options for grep
 			grepOption := GrepOptions{
-				Path: path, 
-				OrigPath: parentOption.Path, 
-				Keyword: parentOption.Keyword, 
-				IgnoreCase: parentOption.IgnoreCase, 
-				LinesBeforeMatch: parentOption.LinesBeforeMatch, 
-				LinesAfterMatch: parentOption.LinesAfterMatch, 
-				LineCount: parentOption.LineCount,
+				Path:             path,
+				OrigPath:         parentOption.Path,
+				Keyword:          parentOption.Keyword,
+				IgnoreCase:       parentOption.IgnoreCase,
+				LinesBeforeMatch: parentOption.LinesBeforeMatch,
+				LinesAfterMatch:  parentOption.LinesAfterMatch,
+				LineCount:        parentOption.LineCount,
 			}
 			result := Grep(fSys, grepOption)
 			if result.Error != nil {
 				outputChan <- result
 				return
 			}
-			
+
 			// if no match found, then return
 			if len(result.MatchedLines) == 0 && result.LineCount == 0 {
 				return
@@ -81,12 +81,12 @@ func GrepR(fSys fs.FS, parentOption GrepOptions) []GrepResult {
 			// setting the path of file (from the user provided path)
 			result.Path = normalisePathFromRoot(path, parentOption.OrigPath)
 			outputChan <- result
-		} (outputChan)
+		}(outputChan)
 
 		return nil
 	})
 
-	var results []GrepResult	// to save the final output
+	var results []GrepResult // to save the final output
 	// collates the results from all the output channels
 	for _, outputChan := range outputChans {
 		result := <-outputChan
@@ -137,7 +137,7 @@ func getReader(fSys fs.FS, option GrepOptions) (io.Reader, func(), error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		return file, func() {file.Close()}, nil
+		return file, func() { file.Close() }, nil
 	}
 	return option.Stdin, func() {}, nil
 }
@@ -145,21 +145,21 @@ func getReader(fSys fs.FS, option GrepOptions) (io.Reader, func(), error) {
 // main logic of string search
 func searchString(r io.Reader, options GrepOptions) ([]string, error) {
 	// init buffer
-	grepBuffer := NewGrepBuffer(options.LinesBeforeMatch)	
+	grepBuffer := NewGrepBuffer(options.LinesBeforeMatch)
 	// counter for lines to save after match
 	afterMatchCount := 0
-	
+
 	keyword := options.Keyword
-	if options.IgnoreCase {		// normalising keyword if ignoreCase was passed
+	if options.IgnoreCase { // normalising keyword if ignoreCase was passed
 		keyword = strings.ToLower(options.Keyword)
 	}
 
-	var result []string		// to save final output
+	var result []string // to save final output
 	scanner := bufio.NewScanner(r)
 	scanner.Split(bufio.ScanLines)
 	for scanner.Scan() {
 		line := scanner.Text()
-		
+
 		// saves lines after match in output
 		if afterMatchCount > 0 {
 			result = append(result, scanner.Text())
@@ -180,13 +180,13 @@ func searchString(r io.Reader, options GrepOptions) ([]string, error) {
 
 			// saving the matched line
 			result = append(result, scanner.Text())
-			
+
 			// saving lines if after match was passed
 			if options.LinesAfterMatch > 0 {
 				afterMatchCount = options.LinesAfterMatch
 			}
 		}
-		
+
 		// save lines to buffer
 		if options.LinesBeforeMatch > 0 {
 			grepBuffer.Push(scanner.Text())
@@ -227,7 +227,7 @@ func isValid(fSys fs.FS, path, origPath string) error {
 // returns the file path from user provided path
 func normalisePathFromRoot(rootPath, userPath string) string {
 	userPathClean := strings.TrimPrefix(userPath, "../")
-    idx := strings.Index(rootPath, userPathClean)
+	idx := strings.Index(rootPath, userPathClean)
 
 	return userPath + rootPath[idx+len(userPathClean):]
 }

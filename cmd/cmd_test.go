@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+
 	grep "github.com/one2n-go-bootcamp/go-grep/pkg"
 )
 
@@ -16,12 +17,12 @@ func TestRun(t *testing.T) {
 	testCases := []struct {
 		name             string
 		stdin            io.Reader
-		fileWName        string
+		fileWriteName    string
 		path             string
 		keyword          string
 		ignoreCase       bool
 		linesBeforeMatch int
-		linesAfterMatch int
+		linesAfterMatch  int
 		searchDir        bool
 		lineCount        bool
 		result           [][]string
@@ -58,8 +59,8 @@ func TestRun(t *testing.T) {
 			expErr:  grep.ErrIsDirectory,
 		},
 		{
-			name: "reads a file with permission error",
-			path: "../testdata/cmd_test/perm_err/test1.txt",
+			name:   "reads a file with permission error",
+			path:   "../testdata/cmd_test/perm_err/test1.txt",
 			expErr: fs.ErrPermission,
 		},
 		{
@@ -103,10 +104,10 @@ func TestRun(t *testing.T) {
 			},
 		},
 		{
-			name:             "greps inside a directory with -r with 1 line after match option",
-			path:             "../testdata/cmd_test",
-			keyword:          "test",
-			searchDir:        true,
+			name:            "greps inside a directory with -r with 1 line after match option",
+			path:            "../testdata/cmd_test",
+			keyword:         "test",
+			searchDir:       true,
 			linesAfterMatch: 1,
 			result: [][]string{
 				{
@@ -127,13 +128,13 @@ func TestRun(t *testing.T) {
 			keyword:   "test",
 			searchDir: true,
 			lineCount: true,
-			result:    [][]string{
-				{"../testdata/cmd_test/test1.txt:2"}, 
+			result: [][]string{
+				{"../testdata/cmd_test/test1.txt:2"},
 				{"../testdata/cmd_test/inner/test2.txt:1"},
 			},
 		},
 	}
-	
+
 	// creates a file for permission error case, and deletes it in cleanup
 	cleanup, err := setTestForPermissonCase(t, "../testdata/cmd_test/perm_err/test1.txt", "test for permisson case")
 	if err != nil {
@@ -147,7 +148,20 @@ func TestRun(t *testing.T) {
 			var got bytes.Buffer
 			want := getExpectedOutput(t, tc.result)
 
-			run(fs, tc.stdin, &got, tc.keyword, tc.path, tc.fileWName, tc.linesBeforeMatch, tc.linesAfterMatch, tc.ignoreCase, tc.searchDir, tc.lineCount)
+			input := &GrepInput{
+				keyword:          tc.keyword,
+				path:             tc.path,
+				fileWriteName:    tc.fileWriteName,
+				linesBeforeMatch: tc.linesBeforeMatch,
+				linesAfterMatch:  tc.linesAfterMatch,
+				ignoreCase:       tc.ignoreCase,
+				searchDir:        tc.searchDir,
+				lineCount:        tc.lineCount,
+				stdin:            tc.stdin,
+				output:           &got,
+			}
+
+			run(fs, input)
 
 			// checking for error
 			if tc.expErr != nil {
@@ -240,31 +254,31 @@ func getExpectedOutput(t *testing.T, result [][]string) string {
 
 func setTestForPermissonCase(t *testing.T, filePath, content string) (func() error, error) {
 	t.Helper()
-	
+
 	// creating file
-    file, err := os.Create(filePath)
-    if err != nil {
-        return nil, err
-    }
+	file, err := os.Create(filePath)
+	if err != nil {
+		return nil, err
+	}
 
 	// writing to file
-    if _, err := file.WriteString(content); err != nil {
-        return nil, err
-    }
+	if _, err := file.WriteString(content); err != nil {
+		return nil, err
+	}
 
 	// setting permisson to 0000
-    if err := os.Chmod(filePath, 0000); err != nil {
-        return nil, err
-    }
+	if err := os.Chmod(filePath, 0000); err != nil {
+		return nil, err
+	}
 
-    // Define the cleanup function
-    cleanup := func() error {
+	// Define the cleanup function
+	cleanup := func() error {
 		file.Close()
-        if err := os.Remove(filePath); err != nil {
-            return err
-        }
-        return nil
-    }
+		if err := os.Remove(filePath); err != nil {
+			return err
+		}
+		return nil
+	}
 
-    return cleanup, nil
+	return cleanup, nil
 }
