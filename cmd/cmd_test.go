@@ -23,6 +23,8 @@ func TestRun(t *testing.T) {
 		ignoreCase       bool
 		linesBeforeMatch int
 		linesAfterMatch  int
+		includeExt       []string
+		excludeExt       []string
 		searchDir        bool
 		lineCount        bool
 		result           [][]string
@@ -133,6 +135,33 @@ func TestRun(t *testing.T) {
 				{"../testdata/cmd_test/inner/test2.txt:1"},
 			},
 		},
+		{
+			name:       "greps inside a directory with -r with include extension option",
+			path:       "../testdata/inc_exc_file",
+			keyword:    "test",
+			searchDir:  true,
+			includeExt: []string{"md"},
+			result: [][]string{
+				{
+					"../testdata/inc_exc_file/test.md:this is a test md file",
+				},
+			},
+		},
+		{
+			name:       "greps inside a directory with -r with exclude extension option",
+			path:       "../testdata/inc_exc_file",
+			keyword:    "test",
+			searchDir:  true,
+			excludeExt: []string{"txt"},
+			result: [][]string{
+				{
+					"../testdata/inc_exc_file/test.md:this is a test md file",
+				},
+				{
+					"../testdata/inc_exc_file/log.log:this is a test log file",
+				},
+			},
+		},
 	}
 
 	// creates a file for permission error case, and deletes it in cleanup
@@ -159,6 +188,8 @@ func TestRun(t *testing.T) {
 				lineCount:        tc.lineCount,
 				stdin:            tc.stdin,
 				output:           &got,
+				includeExt:       tc.includeExt,
+				excludeExt:       tc.excludeExt,
 			}
 
 			run(fs, input)

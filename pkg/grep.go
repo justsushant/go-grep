@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -26,6 +28,8 @@ type GrepOption struct {
 	LinesAfterMatch  int
 	SearchDir        bool
 	LineCount        bool
+	ExcludeExt       []string
+	IncludeExt       []string
 }
 
 type GrepResult struct {
@@ -70,6 +74,8 @@ func GrepR(fSys fs.FS, parentOption GrepOption) []GrepResult {
 				LinesBeforeMatch: parentOption.LinesBeforeMatch,
 				LinesAfterMatch:  parentOption.LinesAfterMatch,
 				LineCount:        parentOption.LineCount,
+				IncludeExt:       parentOption.IncludeExt,
+				ExcludeExt:       parentOption.ExcludeExt,
 			}
 
 			// goroutine will occupy the limit here if its available
@@ -127,6 +133,10 @@ func Grep(fSys fs.FS, option GrepOption) GrepResult {
 	}
 	defer cleanup()
 
+	if r == nil {
+		return GrepResult{}
+	}
+
 	// searches for string
 	result, err := searchString(r, option)
 	if err != nil {
@@ -149,9 +159,13 @@ func Grep(fSys fs.FS, option GrepOption) GrepResult {
 // gets reader for the file
 func getReader(fSys fs.FS, option GrepOption) (io.Reader, func(), error) {
 	if option.Path != "" {
-		err := isValid(fSys, option)
+		ok, err := isValid(fSys, option)
 		if err != nil {
 			return nil, func() {}, err
+		}
+
+		if !ok {
+			return nil, func() {}, nil
 		}
 
 		file, err := fSys.Open(option.Path)
@@ -223,28 +237,47 @@ func searchString(r io.Reader, option GrepOption) ([]string, error) {
 }
 
 // checks if file is valid for reading
-func isValid(fSys fs.FS, option GrepOption) error {
+func isValid(fSys fs.FS, option GrepOption) (bool, error) {
 	// gets the file details
 	fileInfo, err := fs.Stat(fSys, option.Path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("%s: %w", option.OrigPath, fs.ErrNotExist)
+			return false, fmt.Errorf("%s: %w", option.OrigPath, fs.ErrNotExist)
 		}
-		return fmt.Errorf("%s: %w", option.Path, err)
+		return false, fmt.Errorf("%s: %w", option.Path, err)
 	}
 
 	// checks for directory
 	if fileInfo.IsDir() {
-		return fmt.Errorf("%s: %w", option.OrigPath, ErrIsDirectory)
+		return false, fmt.Errorf("%s: %w", option.OrigPath, ErrIsDirectory)
 	}
 
 	// checks for permissions
 	// looks hacky, might have to change later
 	if fileInfo.Mode().Perm()&400 == 0 {
-		return fmt.Errorf("%s: %w", option.Path, fs.ErrPermission)
+		return false, fmt.Errorf("%s: %w", option.Path, fs.ErrPermission)
 	}
 
-	return nil
+	// check if extension to be exlcuded or included
+	if len(option.IncludeExt) > 0 || len(option.ExcludeExt) > 0 {
+		// getting the file extension and removing the dot
+		ext := strings.TrimPrefix(filepath.Ext(fileInfo.Name()), ".")
+
+		// if extension matches with exclude extension flag, don't count it
+		if slices.Contains(option.ExcludeExt, ext) {
+			return false, nil
+		}
+
+		// if include extension flag was passed, only count the approved extension
+		if option.IncludeExt != nil {
+			if slices.Contains(option.IncludeExt, ext) {
+				return true, nil
+			}
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 // returns the file path from user provided path

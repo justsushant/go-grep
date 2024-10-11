@@ -18,6 +18,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -29,6 +30,8 @@ var (
 	linesBeforeMatchFlag = "linesBeforeMatch"
 	linesAfterMatchFlag  = "linesAfterMatch"
 	lineCountFlag        = "lineCount"
+	includeFileFlag      = "include-file"
+	excludeFileFlag      = "exclude-file"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -69,6 +72,14 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			fmt.Fprintln(cmd.OutOrStdout(), err)
 		}
+		includeExt, err := cmd.Flags().GetString(includeFileFlag)
+		if err != nil {
+			fmt.Fprintln(cmd.OutOrStdout(), err)
+		}
+		excludeExt, err := cmd.Flags().GetString(excludeFileFlag)
+		if err != nil {
+			fmt.Fprintln(cmd.OutOrStdout(), err)
+		}
 
 		input := &GrepInput{
 			keyword:          keyword,
@@ -81,6 +92,13 @@ var rootCmd = &cobra.Command{
 			lineCount:        lineCount,
 			stdin:            cmd.InOrStdin(),
 			output:           cmd.OutOrStdout(),
+		}
+
+		if includeExt != "" {
+			input.includeExt = strings.Split(includeExt, ",")
+		}
+		if excludeExt != "" {
+			input.excludeExt = strings.Split(excludeExt, ",")
 		}
 
 		run(os.DirFS("/"), input)
@@ -112,4 +130,6 @@ func init() {
 	rootCmd.Flags().IntP(linesAfterMatchFlag, "A", 0, "includes the line(s) after the match")
 	rootCmd.Flags().IntP(linesBeforeMatchFlag, "B", 0, "includes the line(s) before the match")
 	rootCmd.Flags().BoolP(lineCountFlag, "C", false, "includes the line count")
+	rootCmd.Flags().StringP(includeFileFlag, "", "", "only include relevant file types")
+	rootCmd.Flags().StringP(excludeFileFlag, "", "", "exclude all provided file types")
 }

@@ -23,6 +23,8 @@ type GrepInput struct {
 	lineCount        bool
 	stdin            io.Reader
 	output           io.Writer
+	includeExt       []string
+	excludeExt       []string
 }
 
 func run(fSys fs.FS, input *GrepInput) {
@@ -37,6 +39,8 @@ func run(fSys fs.FS, input *GrepInput) {
 		option.LinesAfterMatch = input.linesAfterMatch
 		option.SearchDir = input.searchDir
 		option.LineCount = input.lineCount
+		option.ExcludeExt = input.excludeExt
+		option.IncludeExt = input.includeExt
 	} else {
 		// file case
 		fullPath, err := getFullPath(fSys, input.path)
@@ -53,6 +57,8 @@ func run(fSys fs.FS, input *GrepInput) {
 		option.LinesAfterMatch = input.linesAfterMatch
 		option.SearchDir = input.searchDir
 		option.LineCount = input.lineCount
+		option.ExcludeExt = input.excludeExt
+		option.IncludeExt = input.includeExt
 	}
 
 	// calling the internal grep function

@@ -29,6 +29,8 @@ var testFS = fstest.MapFS{
 	"testdata/filexyz.txt":     {Data: []byte("no matches here"), Mode: 0755},
 	"testdata/inner/test1.txt": {Data: []byte("dummy file"), Mode: 0755},
 	"testdata/inner/test2.txt": {Data: []byte("this file contains a test line"), Mode: 0755},
+	"testdata/mdFile.md":       {Data: []byte("this is a test md"), Mode: 0755},
+	"testdata/logFile.log":     {Data: []byte("this is a test log"), Mode: 0755},
 }
 
 func TestGrep(t *testing.T) {
@@ -172,10 +174,12 @@ func TestGrepR(t *testing.T) {
 		ignoreCase       bool
 		linesBeforeMatch int
 		lineCount        bool
+		includeExt       []string
+		excludeExt       []string
 		result           []GrepResult
 	}{
 		{
-			name:       "greps inside a directory with -r",
+			name:       "greps inside a directory",
 			path:       "testdata",
 			keyword:    "test",
 			ignoreCase: false,
@@ -188,14 +192,23 @@ func TestGrepR(t *testing.T) {
 					Path:         "testdata/inner/test2.txt",
 					MatchedLines: []string{"this file contains a test line"},
 				},
+				{
+					Path:         "testdata/mdFile.md",
+					MatchedLines: []string{"this is a test md"},
+				},
+				{
+					Path:         "testdata/logFile.log",
+					MatchedLines: []string{"this is a test log"},
+				},
 			},
 		},
 		{
-			name:             "greps inside a directory with -r with lines before match option",
+			name:             "greps inside a directory with lines before match and include txt extension option",
 			path:             "testdata",
 			keyword:          "test",
 			ignoreCase:       false,
 			linesBeforeMatch: 1,
+			includeExt:       []string{"txt"},
 			result: []GrepResult{
 				{
 					Path: "testdata/test1.txt",
@@ -212,11 +225,30 @@ func TestGrepR(t *testing.T) {
 			},
 		},
 		{
-			name:       "greps inside a directory with -r with line count option",
+			name:       "greps inside a directory with line count and include txt extension option",
 			path:       "testdata",
 			keyword:    "test",
 			ignoreCase: false,
 			lineCount:  true,
+			includeExt: []string{"txt"},
+			result: []GrepResult{
+				{
+					Path:      "testdata/test1.txt",
+					LineCount: 2,
+				},
+				{
+					Path:      "testdata/inner/test2.txt",
+					LineCount: 1,
+				},
+			},
+		},
+		{
+			name:       "greps inside a directory with exclude extension option",
+			path:       "testdata",
+			keyword:    "test",
+			ignoreCase: false,
+			lineCount:  true,
+			excludeExt: []string{"md", "log"},
 			result: []GrepResult{
 				{
 					Path:      "testdata/test1.txt",
@@ -232,7 +264,7 @@ func TestGrepR(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			options := GrepOption{Path: tc.path, Keyword: tc.keyword, IgnoreCase: tc.ignoreCase, LinesBeforeMatch: tc.linesBeforeMatch, LineCount: tc.lineCount}
+			options := GrepOption{Path: tc.path, Keyword: tc.keyword, IgnoreCase: tc.ignoreCase, LinesBeforeMatch: tc.linesBeforeMatch, LineCount: tc.lineCount, ExcludeExt: tc.excludeExt, IncludeExt: tc.includeExt}
 			got := GrepR(testFS, options)
 			want := tc.result
 
@@ -407,11 +439,20 @@ func TestIsValid(t *testing.T) {
 			expOut: false,
 			expErr: fs.ErrPermission,
 		},
+		{
+			name: "exclude file extension",
+			option: GrepOption{
+				Path:       "file6.txt",
+				ExcludeExt: []string{"txt"},
+			},
+			expOut: false,
+			expErr: nil,
+		},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			gotErr := isValid(testFS, tc.option)
+			got, gotErr := isValid(testFS, tc.option)
 
 			if tc.expErr != nil {
 				if gotErr == nil {
@@ -427,6 +468,10 @@ func TestIsValid(t *testing.T) {
 
 			if gotErr != nil {
 				t.Fatalf("Unexpected error: %q", gotErr.Error())
+			}
+
+			if got != tc.expOut {
+				t.Errorf("Expected %v but got %v", tc.expOut, got)
 			}
 		})
 	}
