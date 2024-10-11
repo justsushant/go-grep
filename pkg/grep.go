@@ -10,6 +10,8 @@ import (
 	"sync"
 )
 
+const MAX_OPEN_FILE_DESCRIPTORS = 1024
+
 var (
 	ErrIsDirectory = errors.New("is a directory")
 )
@@ -19,7 +21,6 @@ type GrepOption struct {
 	Path             string
 	Stdin            io.Reader
 	Keyword          string
-	FileWName        string
 	IgnoreCase       bool
 	LinesBeforeMatch int
 	LinesAfterMatch  int
@@ -35,6 +36,9 @@ type GrepResult struct {
 }
 
 func GrepR(fSys fs.FS, parentOption GrepOption) []GrepResult {
+	var openFileLimit int = MAX_OPEN_FILE_DESCRIPTORS
+	cond := sync.NewCond(&sync.Mutex{})
+
 	var wg sync.WaitGroup
 	var outputChans []chan GrepResult
 
@@ -67,11 +71,28 @@ func GrepR(fSys fs.FS, parentOption GrepOption) []GrepResult {
 				LinesAfterMatch:  parentOption.LinesAfterMatch,
 				LineCount:        parentOption.LineCount,
 			}
+
+			// goroutine will occupy the limit here if its available
+			// otherwise it will wait
+			cond.L.Lock()
+			for openFileLimit <= 0 {
+				cond.Wait()
+			}
+			openFileLimit--
+			cond.L.Unlock()
+
+			// grep operation here
 			result := Grep(fSys, grepOption)
 			if result.Error != nil {
 				outputChan <- result
 				return
 			}
+
+			// goroutine will free the limit here and signal other waiting goroutine to resume
+			cond.L.Lock()
+			openFileLimit++
+			cond.Signal()
+			cond.L.Unlock()
 
 			// if no match found, then return
 			if len(result.MatchedLines) == 0 && result.LineCount == 0 {

@@ -32,7 +32,6 @@ func run(fSys fs.FS, input *GrepInput) {
 	if input.path == "" {
 		option.Stdin = input.stdin
 		option.Keyword = input.keyword
-		option.FileWName = input.fileWriteName
 		option.IgnoreCase = input.ignoreCase
 		option.LinesBeforeMatch = input.linesBeforeMatch
 		option.LinesAfterMatch = input.linesAfterMatch
@@ -49,7 +48,6 @@ func run(fSys fs.FS, input *GrepInput) {
 		option.Keyword = input.keyword
 		option.OrigPath = input.path
 		option.Path = fullPath
-		option.FileWName = input.fileWriteName
 		option.IgnoreCase = input.ignoreCase
 		option.LinesBeforeMatch = input.linesBeforeMatch
 		option.LinesAfterMatch = input.linesAfterMatch
@@ -57,6 +55,7 @@ func run(fSys fs.FS, input *GrepInput) {
 		option.LineCount = input.lineCount
 	}
 
+	// calling the internal grep function
 	var result []grep.GrepResult
 	if input.searchDir {
 		result = grep.GrepR(fSys, option)
@@ -69,8 +68,8 @@ func run(fSys fs.FS, input *GrepInput) {
 		result = append(result, grepResult)
 	}
 
+	// preparing the final output in the required format
 	var outputArr []string
-	// preparing to print the result on the basis of options
 	for _, res := range result {
 		if input.searchDir && option.LineCount {
 			outputArr = append(outputArr, fmt.Sprintf("%s:%d\n", res.Path, res.LineCount))
@@ -85,6 +84,11 @@ func run(fSys fs.FS, input *GrepInput) {
 		}
 	}
 
+	printResult(outputArr, input)
+}
+
+// prints the final result
+func printResult(outputArr []string, input *GrepInput) {
 	// writing to file if file name was passed
 	if input.fileWriteName != "" {
 		err := writeToFile(input.fileWriteName, strings.Join(outputArr, ""))
