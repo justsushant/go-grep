@@ -3,33 +3,35 @@ package grep
 import (
 	"bytes"
 	"errors"
+	"io"
 	"io/fs"
 	"slices"
 	"testing"
 	"testing/fstest"
+	"testing/iotest"
 )
 
-func TestSearchString(t *testing.T) {
-	// setting the test file system
-	testFS := fstest.MapFS{}
-	testFS["file1.txt"] = &fstest.MapFile{
-		Data: []byte("this\nis\na\nfile\nIs"), 
+var testFS = fstest.MapFS{
+	"file1.txt": {Data: []byte(""), Mode: 0755},
+	"file2.txt": {Data: []byte("single_line"), Mode: 0755},
+	"file3.txt": {Data: []byte("single line\nand\ndouble line\nin\nfile"), Mode: 0755},
+	"file4.txt": {Data: []byte("\nI love mangoes,\tapples- but it applies to most fruits.\n??--ww"), Mode: 0755},
+	"file5.txt": {Data: []byte("this file got permisson error"), Mode: 0000},
+	"file6.txt": {Data: []byte("this\nis\na\nfile\nIs"), Mode: 0755},
+	"file7.txt": {Data: []byte("line1\nline2\nline3\nline4\nline5\nline6 match1\nline7\nline8\nline9"), Mode: 0755},
+	"file8.txt": {Data: []byte("line1\nline2\nline3\nline4\nline5\nline6 match1\nline7 match2\nline8\nline9\nline10"), Mode: 0755},
+	"dir1":      {Mode: fs.ModeDir},
+	"testdata":  {Data: nil, Mode: fs.ModeDir},
+	"testdata/test1.txt": {
+		Data: []byte("Dummy Line\nthis is a test file\none can test a program by running test cases"),
 		Mode: 0755,
-	}
-	testFS["file2.txt"] = &fstest.MapFile{
-		Data: []byte{}, 
-		Mode: 0000,
-	}
-	testFS["file3.txt"] = &fstest.MapFile{
-		Data: []byte("line1\nline2\nline3\nline4\nline5\nline6 match1\nline7\nline8\nline9"), 
-		Mode: 0755,
-	}
-	testFS["file4.txt"] = &fstest.MapFile{
-		Data: []byte("line1\nline2\nline3\nline4\nline5\nline6 match1\nline7 match2\nline8\nline9\nline10"), 
-		Mode: 0755,
-	}
-	testFS["testDir"] = &fstest.MapFile{Data: nil, Mode: fs.ModeDir}
+	},
+	"testdata/filexyz.txt":     {Data: []byte("no matches here"), Mode: 0755},
+	"testdata/inner/test1.txt": {Data: []byte("dummy file"), Mode: 0755},
+	"testdata/inner/test2.txt": {Data: []byte("this file contains a test line"), Mode: 0755},
+}
 
+func TestGrep(t *testing.T) {
 	testCases := []struct {
 		name             string
 		stdin            []byte
@@ -44,7 +46,7 @@ func TestSearchString(t *testing.T) {
 	}{
 		{
 			name:       "greps a multi-line file",
-			fileName:   "file1.txt",
+			fileName:   "file6.txt",
 			keyword:    "is",
 			ignoreCase: false,
 			result:     GrepResult{MatchedLines: []string{"this", "is"}},
@@ -52,7 +54,7 @@ func TestSearchString(t *testing.T) {
 		},
 		{
 			name:       "greps a multi-line file text sensitive",
-			fileName:   "file1.txt",
+			fileName:   "file6.txt",
 			keyword:    "is",
 			ignoreCase: true,
 			result:     GrepResult{MatchedLines: []string{"this", "is", "Is"}},
@@ -60,7 +62,7 @@ func TestSearchString(t *testing.T) {
 		},
 		{
 			name:             "greps a multi-line file lines with lines before match",
-			fileName:         "file3.txt",
+			fileName:         "file7.txt",
 			keyword:          "match",
 			ignoreCase:       false,
 			linesBeforeMatch: 2,
@@ -69,7 +71,7 @@ func TestSearchString(t *testing.T) {
 		},
 		{
 			name:             "greps a multi-line file lines with lines before match",
-			fileName:         "file4.txt",
+			fileName:         "file8.txt",
 			keyword:          "match",
 			ignoreCase:       false,
 			linesBeforeMatch: 2,
@@ -77,31 +79,31 @@ func TestSearchString(t *testing.T) {
 			expErr:           nil,
 		},
 		{
-			name:             "greps a multi-line file lines with lines after match",
-			fileName:         "file4.txt",
-			keyword:          "match",
-			ignoreCase:       false,
-			linesAfterMatch:  1,
-			result:           GrepResult{MatchedLines: []string{"line6 match1", "line7 match2", "line7 match2", "line8"}},
-			expErr:           nil,
+			name:            "greps a multi-line file lines with lines after match",
+			fileName:        "file8.txt",
+			keyword:         "match",
+			ignoreCase:      false,
+			linesAfterMatch: 1,
+			result:          GrepResult{MatchedLines: []string{"line6 match1", "line7 match2", "line7 match2", "line8"}},
+			expErr:          nil,
 		},
 		{
 			name:       "greps a multi-line file line with single count",
-			fileName:   "file3.txt",
+			fileName:   "file7.txt",
 			keyword:    "match",
 			ignoreCase: false,
 			lineCount:  true,
 			result:     GrepResult{LineCount: 1},
-			expErr: nil,
+			expErr:     nil,
 		},
 		{
 			name:       "greps a multi-line file line with double count",
-			fileName:   "file4.txt",
+			fileName:   "file8.txt",
 			keyword:    "match",
 			ignoreCase: false,
 			lineCount:  true,
 			result:     GrepResult{LineCount: 2},
-			expErr: nil,
+			expErr:     nil,
 		},
 		{
 			name:    "reads from stdin",
@@ -112,12 +114,12 @@ func TestSearchString(t *testing.T) {
 		},
 		{
 			name:     "reads a file with permission error",
-			fileName: "file2.txt",
+			fileName: "file5.txt",
 			expErr:   fs.ErrPermission,
 		},
 		{
 			name:     "reads an empty directory",
-			fileName: "testDir",
+			fileName: "dir1",
 			expErr:   ErrIsDirectory,
 		},
 		{
@@ -129,7 +131,7 @@ func TestSearchString(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			options := GrepOptions{Path: tc.fileName, Stdin: bytes.NewReader(tc.stdin), Keyword: tc.keyword, IgnoreCase: tc.ignoreCase, LinesBeforeMatch: tc.linesBeforeMatch, LinesAfterMatch: tc.linesAfterMatch, LineCount: tc.lineCount}
+			options := GrepOption{Path: tc.fileName, Stdin: bytes.NewReader(tc.stdin), Keyword: tc.keyword, IgnoreCase: tc.ignoreCase, LinesBeforeMatch: tc.linesBeforeMatch, LinesAfterMatch: tc.linesAfterMatch, LineCount: tc.lineCount}
 			got := Grep(testFS, options)
 			want := tc.result
 
@@ -162,51 +164,41 @@ func TestSearchString(t *testing.T) {
 	}
 }
 
-func TestSearchStringR(t *testing.T) {
-	var testFS fstest.MapFS = make(map[string]*fstest.MapFile)
-	testFS["testdata"] = &fstest.MapFile{Data: nil, Mode: fs.ModeDir}
-	testFS["testdata/test1.txt"] = &fstest.MapFile{
-		Data: []byte("Dummy Line\nthis is a test file\none can test a program by running test cases"), 
-		Mode: 0755,
-	}
-	testFS["testdata/filexyz.txt"] = &fstest.MapFile{Data: []byte("no matches here"), Mode: 0755}
-	testFS["testdata/inner/test1.txt"] = &fstest.MapFile{Data: []byte("dummy file"), Mode: 0755}
-	testFS["testdata/inner/test2.txt"] = &fstest.MapFile{Data: []byte("this file contains a test line"), Mode: 0755}
-
+func TestGrepR(t *testing.T) {
 	testCases := []struct {
-		name       string
-		path       string
-		keyword    string
-		ignoreCase bool
+		name             string
+		path             string
+		keyword          string
+		ignoreCase       bool
 		linesBeforeMatch int
-		lineCount bool
-		result     []GrepResult
+		lineCount        bool
+		result           []GrepResult
 	}{
 		{
-			name: "greps inside a directory with -r",
-			path: "testdata",
-			keyword: "test",
+			name:       "greps inside a directory with -r",
+			path:       "testdata",
+			keyword:    "test",
 			ignoreCase: false,
 			result: []GrepResult{
 				{
-					Path:"testdata/test1.txt",
+					Path:         "testdata/test1.txt",
 					MatchedLines: []string{"this is a test file", "one can test a program by running test cases"},
 				},
 				{
-					Path:"testdata/inner/test2.txt",
+					Path:         "testdata/inner/test2.txt",
 					MatchedLines: []string{"this file contains a test line"},
 				},
 			},
 		},
 		{
-			name: "greps inside a directory with -r with lines before match option",
-			path: "testdata",
-			keyword: "test",
-			ignoreCase: false,
+			name:             "greps inside a directory with -r with lines before match option",
+			path:             "testdata",
+			keyword:          "test",
+			ignoreCase:       false,
 			linesBeforeMatch: 1,
 			result: []GrepResult{
 				{
-					Path:"testdata/test1.txt",
+					Path: "testdata/test1.txt",
 					MatchedLines: []string{
 						"Dummy Line", "this is a test file",
 						"this is a test file",
@@ -214,24 +206,24 @@ func TestSearchStringR(t *testing.T) {
 					},
 				},
 				{
-					Path:"testdata/inner/test2.txt",
+					Path:         "testdata/inner/test2.txt",
 					MatchedLines: []string{"this file contains a test line"},
 				},
 			},
 		},
 		{
-			name: "greps inside a directory with -r with line count option",
-			path: "testdata",
-			keyword: "test",
+			name:       "greps inside a directory with -r with line count option",
+			path:       "testdata",
+			keyword:    "test",
 			ignoreCase: false,
-			lineCount: true,
+			lineCount:  true,
 			result: []GrepResult{
 				{
-					Path:"testdata/test1.txt",
+					Path:      "testdata/test1.txt",
 					LineCount: 2,
 				},
 				{
-					Path:"testdata/inner/test2.txt", 
+					Path:      "testdata/inner/test2.txt",
 					LineCount: 1,
 				},
 			},
@@ -240,7 +232,7 @@ func TestSearchStringR(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			options := GrepOptions{Path: tc.path, Keyword: tc.keyword, IgnoreCase: tc.ignoreCase, LinesBeforeMatch: tc.linesBeforeMatch, LineCount: tc.lineCount}
+			options := GrepOption{Path: tc.path, Keyword: tc.keyword, IgnoreCase: tc.ignoreCase, LinesBeforeMatch: tc.linesBeforeMatch, LineCount: tc.lineCount}
 			got := GrepR(testFS, options)
 			want := tc.result
 
@@ -249,9 +241,9 @@ func TestSearchStringR(t *testing.T) {
 				matchFlag := false
 				for _, w := range want {
 					if g.Path == w.Path && slices.Equal(g.MatchedLines, w.MatchedLines) && g.LineCount == w.LineCount {
-                        matchFlag = true
-                        break
-                    }
+						matchFlag = true
+						break
+					}
 				}
 
 				if !matchFlag {
@@ -261,6 +253,321 @@ func TestSearchStringR(t *testing.T) {
 
 			if len(got) != len(want) {
 				t.Errorf("Expected length %d but got %d", len(want), len(got))
+			}
+		})
+	}
+}
+
+func TestGetReader(t *testing.T) {
+	tt := []struct {
+		name            string
+		option          GrepOption
+		expTextInReader string
+		expErr          error
+	}{
+		{
+			name: "nomal happy case with valid path",
+			option: GrepOption{
+				Path:  "file2.txt",
+				Stdin: nil,
+			},
+			expTextInReader: "single_line",
+			expErr:          nil,
+		},
+		{
+			name: "nomal happy case with empty path and valid stdin",
+			option: GrepOption{
+				Path:  "",
+				Stdin: bytes.NewReader([]byte("text from stdin\n here")),
+			},
+			expTextInReader: "text from stdin\n here",
+			expErr:          nil,
+		},
+		{
+			name: "error unhappy case with invalid path of file",
+			option: GrepOption{
+				Path:  "invalid_file.txt",
+				Stdin: nil,
+			},
+			expTextInReader: "",
+			expErr:          fs.ErrNotExist,
+		},
+		{
+			name: "error unhappy case with valid path of directory",
+			option: GrepOption{
+				Path:  "dir1",
+				Stdin: nil,
+			},
+			expTextInReader: "",
+			expErr:          ErrIsDirectory,
+		},
+		{
+			name: "error unhappy case with valid path of file but permisson error",
+			option: GrepOption{
+				Path:  "file5.txt",
+				Stdin: nil,
+			},
+			expTextInReader: "",
+			expErr:          fs.ErrPermission,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			reader, cleanup, err := getReader(testFS, tc.option)
+			if tc.expErr != nil {
+				if err == nil {
+					t.Fatalf("Expected error %q but got nil", tc.expErr.Error())
+				}
+
+				if !errors.Is(err, tc.expErr) {
+					t.Fatalf("Expected error %q but got %q", tc.expErr.Error(), err.Error())
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Unexpected error: %q", err.Error())
+			}
+
+			// checking if the reader has the same text as we expected
+			data, err := io.ReadAll(reader)
+			if err != nil {
+				t.Fatalf("Unexpected error while reading from io.Reader, %q", err.Error())
+			}
+			if string(data) != tc.expTextInReader {
+				t.Errorf("Expected the reader to have %q but got %q", tc.expTextInReader, string(data))
+			}
+
+			// TODO: testing the behaviour of cleanup function
+			// maybe we have to find a way to check if the file is still open (that would be too coupled to the implementation)
+			// we can also do some kind of mock counter thing where the cleanup function would be injected from arguments and we will check if the counter has been incremented
+			// very unclear what to do here
+			cleanup()
+		})
+	}
+}
+
+func TestIsValid(t *testing.T) {
+	testFS := fstest.MapFS{
+		"file1.txt": {Data: []byte(""), Mode: 0755},
+		"file2.txt": {Data: []byte("single_line"), Mode: 0755},
+		"file3.txt": {Data: []byte("single line\nand\ndouble line\nin\nfile"), Mode: 0755},
+		"file4.txt": {Data: []byte("\nI love mangoes,\tapples- but it applies to most fruits.\n??--ww"), Mode: 0755},
+		"file5.txt": {Data: []byte("this file got permisson error"), Mode: 0000},
+		"file6.txt": {Data: []byte("dummy file 6"), Mode: 0755},
+		"dir1":      {Mode: fs.ModeDir},
+	}
+
+	tt := []struct {
+		name            string
+		option          GrepOption
+		expOut          bool
+		expTextInReader string
+		expErr          error
+	}{
+		{
+			name:   "nomal happy case with valid path",
+			expOut: true,
+			option: GrepOption{
+				Path: "file2.txt",
+			},
+			expErr: nil,
+		},
+		{
+			name:   "error unhappy case with empty path",
+			expOut: false,
+			option: GrepOption{
+				Path: "",
+			},
+			expErr: fs.ErrNotExist,
+		},
+		{
+			name: "error unhappy case with invalid path of file",
+			option: GrepOption{
+				Path: "xyz.txt",
+			},
+			expOut: false,
+			expErr: fs.ErrNotExist,
+		},
+		{
+			name: "error unhappy case with valid path of directory",
+			option: GrepOption{
+				Path: "dir1",
+			},
+			expOut: false,
+			expErr: ErrIsDirectory,
+		},
+		{
+			name: "error unhappy case with valid path of file but permisson error",
+			option: GrepOption{
+				Path: "file5.txt",
+			},
+			expOut: false,
+			expErr: fs.ErrPermission,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			gotErr := isValid(testFS, tc.option)
+
+			if tc.expErr != nil {
+				if gotErr == nil {
+					t.Fatalf("Expected error %q but got nil", tc.expErr.Error())
+				}
+
+				if !errors.Is(gotErr, tc.expErr) {
+					t.Fatalf("Expected error %q but got %q", tc.expErr.Error(), gotErr.Error())
+				}
+
+				return
+			}
+
+			if gotErr != nil {
+				t.Fatalf("Unexpected error: %q", gotErr.Error())
+			}
+		})
+	}
+}
+
+func TestNormalisePathFromRoot(t *testing.T) {
+	tt := []struct {
+		name     string
+		rootPath string
+		dirPath  string
+		expOut   string
+	}{
+		{
+			name:     "happy path - 1",
+			rootPath: "go-grep/testdata/cmd_test/inner/test2.txt",
+			dirPath:  "../testdata/cmd_test",
+			expOut:   "../testdata/cmd_test/inner/test2.txt",
+		},
+		{
+			name:     "happy path - 2",
+			rootPath: "go-grep/testdata/cmd_test/inner/testdata/cmd_test/test2.txt",
+			dirPath:  "../testdata/cmd_test",
+			expOut:   "../testdata/cmd_test/inner/testdata/cmd_test/test2.txt",
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			got := normalisePathFromRoot(tc.rootPath, tc.dirPath)
+
+			if got != tc.expOut {
+				t.Errorf("Expected %v but got %v", tc.expOut, got)
+			}
+		})
+	}
+}
+
+func TestSearchString(t *testing.T) {
+	tt := []struct {
+		name   string
+		reader io.Reader
+		option GrepOption
+		expOut []string
+		expErr error
+	}{
+		{
+			name:   "normal search",
+			reader: bytes.NewReader([]byte("Dummy Line\nthis is a test file\none can test a program by running test cases")),
+			option: GrepOption{
+				Keyword: "test",
+			},
+			expOut: []string{
+				"this is a test file",
+				"one can test a program by running test cases",
+			},
+			expErr: nil,
+		},
+		{
+			name:   "search with lines before match option",
+			reader: bytes.NewReader([]byte("Dummy Line\nthis is a test file\none can test a program by running test cases")),
+			option: GrepOption{
+				Keyword:          "test",
+				LinesBeforeMatch: 1,
+			},
+			expOut: []string{
+				"Dummy Line",
+				"this is a test file",
+				"this is a test file",
+				"one can test a program by running test cases",
+			},
+			expErr: nil,
+		},
+		{
+			name:   "search with lines before match and lines after match option",
+			reader: bytes.NewReader([]byte("Dummy Line\nthis is a test file\none can test a program by running test cases")),
+			option: GrepOption{
+				Keyword:          "test",
+				LinesBeforeMatch: 1,
+				LinesAfterMatch:  1,
+			},
+			expOut: []string{
+				"Dummy Line",
+				"this is a test file",
+				"one can test a program by running test cases",
+				"this is a test file",
+				"one can test a program by running test cases",
+			},
+			expErr: nil,
+		},
+		{
+			name:   "search with lines before match and lines after match option",
+			reader: bytes.NewReader([]byte("Dummy Line\nthis is a test file\none can test a program by running test cases")),
+			option: GrepOption{
+				Keyword:          "test",
+				LinesBeforeMatch: 1,
+				LinesAfterMatch:  1,
+			},
+			expOut: []string{
+				"Dummy Line",
+				"this is a test file",
+				"one can test a program by running test cases",
+				"this is a test file",
+				"one can test a program by running test cases",
+			},
+			expErr: nil,
+		},
+		{
+			name:   "loaded error prone reader",
+			reader: iotest.ErrReader(io.ErrUnexpectedEOF),
+			option: GrepOption{
+				Keyword: "test",
+			},
+			expOut: []string{
+				"this is a test file",
+				"one can test a program by running test cases",
+			},
+			expErr: io.ErrUnexpectedEOF,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			got, gotErr := searchString(tc.reader, tc.option)
+			if tc.expErr != nil {
+				if gotErr == nil {
+					t.Errorf("Expected error %v but got nil", tc.expErr)
+				}
+
+				if !errors.Is(gotErr, tc.expErr) {
+					t.Errorf("Expected error %v but got %v", tc.expErr, gotErr)
+				}
+
+				return
+			}
+
+			if gotErr != nil {
+				t.Errorf("Unexpected error: %v", gotErr)
+			}
+
+			if !slices.Equal(tc.expOut, got) {
+				t.Errorf("Expected %v but got %v", tc.expOut, got)
 			}
 		})
 	}

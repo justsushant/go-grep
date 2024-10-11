@@ -26,7 +26,7 @@ type GrepInput struct {
 }
 
 func run(fSys fs.FS, input *GrepInput) {
-	option := grep.GrepOptions{}
+	option := grep.GrepOption{}
 
 	// stdin case
 	if input.path == "" {

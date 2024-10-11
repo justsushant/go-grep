@@ -14,7 +14,7 @@ var (
 	ErrIsDirectory = errors.New("is a directory")
 )
 
-type GrepOptions struct {
+type GrepOption struct {
 	OrigPath         string
 	Path             string
 	Stdin            io.Reader
@@ -34,7 +34,7 @@ type GrepResult struct {
 	Error        error
 }
 
-func GrepR(fSys fs.FS, parentOption GrepOptions) []GrepResult {
+func GrepR(fSys fs.FS, parentOption GrepOption) []GrepResult {
 	var wg sync.WaitGroup
 	var outputChans []chan GrepResult
 
@@ -58,7 +58,7 @@ func GrepR(fSys fs.FS, parentOption GrepOptions) []GrepResult {
 			}
 
 			// prepares the options for grep
-			grepOption := GrepOptions{
+			grepOption := GrepOption{
 				Path:             path,
 				OrigPath:         parentOption.Path,
 				Keyword:          parentOption.Keyword,
@@ -98,7 +98,7 @@ func GrepR(fSys fs.FS, parentOption GrepOptions) []GrepResult {
 	return results
 }
 
-func Grep(fSys fs.FS, option GrepOptions) GrepResult {
+func Grep(fSys fs.FS, option GrepOption) GrepResult {
 	// gets the reader for file after validity checks
 	r, cleanup, err := getReader(fSys, option)
 	if err != nil {
@@ -126,11 +126,11 @@ func Grep(fSys fs.FS, option GrepOptions) GrepResult {
 }
 
 // gets reader for the file
-func getReader(fSys fs.FS, option GrepOptions) (io.Reader, func(), error) {
+func getReader(fSys fs.FS, option GrepOption) (io.Reader, func(), error) {
 	if option.Path != "" {
-		err := isValid(fSys, option.Path, option.OrigPath)
+		err := isValid(fSys, option)
 		if err != nil {
-			return nil, nil, err
+			return nil, func() {}, err
 		}
 
 		file, err := fSys.Open(option.Path)
@@ -143,15 +143,16 @@ func getReader(fSys fs.FS, option GrepOptions) (io.Reader, func(), error) {
 }
 
 // main logic of string search
-func searchString(r io.Reader, options GrepOptions) ([]string, error) {
+func searchString(r io.Reader, option GrepOption) ([]string, error) {
 	// init buffer
-	grepBuffer := NewGrepBuffer(options.LinesBeforeMatch)
+	grepBuffer := NewGrepBuffer(option.LinesBeforeMatch)
+
 	// counter for lines to save after match
 	afterMatchCount := 0
 
-	keyword := options.Keyword
-	if options.IgnoreCase { // normalising keyword if ignoreCase was passed
-		keyword = strings.ToLower(options.Keyword)
+	keyword := option.Keyword
+	if option.IgnoreCase { // normalising keyword if ignoreCase was passed
+		keyword = strings.ToLower(option.Keyword)
 	}
 
 	var result []string // to save final output
@@ -159,36 +160,37 @@ func searchString(r io.Reader, options GrepOptions) ([]string, error) {
 	scanner.Split(bufio.ScanLines)
 	for scanner.Scan() {
 		line := scanner.Text()
+		// normalising line if ignoreCase
+		if option.IgnoreCase {
+			line = strings.ToLower(scanner.Text())
+		}
 
-		// saves lines after match in output
+		// saves line in output
+		// if match was found in prev iteration and user wants lines after match
 		if afterMatchCount > 0 {
 			result = append(result, scanner.Text())
 			afterMatchCount--
 		}
 
-		// normalising line if ignoreCase
-		if options.IgnoreCase {
-			line = strings.ToLower(scanner.Text())
-		}
-
 		// comparison and saving lines if matched
 		if strings.Contains(line, keyword) {
 			// saving lines if before match was passed
-			if options.LinesBeforeMatch > 0 {
+			if option.LinesBeforeMatch > 0 {
 				result = append(result, grepBuffer.Dump()...)
 			}
 
 			// saving the matched line
 			result = append(result, scanner.Text())
 
-			// saving lines if after match was passed
-			if options.LinesAfterMatch > 0 {
-				afterMatchCount = options.LinesAfterMatch
+			// setting the counter for afterMatchCount if after match flag was passed
+			if option.LinesAfterMatch > 0 {
+				afterMatchCount += option.LinesAfterMatch
 			}
 		}
 
-		// save lines to buffer
-		if options.LinesBeforeMatch > 0 {
+		// save line to buffer in advance
+		// if match is found in future iteration and user wants lines before match
+		if option.LinesBeforeMatch > 0 {
 			grepBuffer.Push(scanner.Text())
 		}
 	}
@@ -200,34 +202,34 @@ func searchString(r io.Reader, options GrepOptions) ([]string, error) {
 }
 
 // checks if file is valid for reading
-func isValid(fSys fs.FS, path, origPath string) error {
+func isValid(fSys fs.FS, option GrepOption) error {
 	// gets the file details
-	fileInfo, err := fs.Stat(fSys, path)
+	fileInfo, err := fs.Stat(fSys, option.Path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("%s: %w", origPath, fs.ErrNotExist)
+			return fmt.Errorf("%s: %w", option.OrigPath, fs.ErrNotExist)
 		}
-		return fmt.Errorf("%s: %w", path, err)
+		return fmt.Errorf("%s: %w", option.Path, err)
 	}
 
 	// checks for directory
 	if fileInfo.IsDir() {
-		return fmt.Errorf("%s: %w", origPath, ErrIsDirectory)
+		return fmt.Errorf("%s: %w", option.OrigPath, ErrIsDirectory)
 	}
 
 	// checks for permissions
 	// looks hacky, might have to change later
 	if fileInfo.Mode().Perm()&400 == 0 {
-		return fmt.Errorf("%s: %w", path, fs.ErrPermission)
+		return fmt.Errorf("%s: %w", option.Path, fs.ErrPermission)
 	}
 
 	return nil
 }
 
 // returns the file path from user provided path
-func normalisePathFromRoot(rootPath, userPath string) string {
-	userPathClean := strings.TrimPrefix(userPath, "../")
-	idx := strings.Index(rootPath, userPathClean)
+func normalisePathFromRoot(rootPath, dirPath string) string {
+	dirPathClean := strings.TrimPrefix(dirPath, "../")
+	idx := strings.Index(rootPath, dirPathClean)
 
-	return userPath + rootPath[idx+len(userPathClean):]
+	return dirPath + rootPath[idx+len(dirPathClean):]
 }

@@ -282,3 +282,56 @@ func setTestForPermissonCase(t *testing.T, filePath, content string) (func() err
 
 	return cleanup, nil
 }
+
+func TestGetFullPath(t *testing.T) {
+	tt := []struct {
+		name   string
+		fSys   fs.FS
+		path   string
+		expOut string
+		expErr error
+	}{
+		{
+			name:   "normal case with valid path",
+			path:   "testdata/file1.txt",
+			expOut: "testdata/file1.txt",
+			expErr: nil,
+		},
+		{
+			name:   "normal case with valid path with a lot of back and forth",
+			path:   "pkg/../testdata/testdir/../file4.txt",
+			expOut: "testdata/file4.txt",
+			expErr: nil,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			wd, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("Unexpected error while getting current working directory: %v", err)
+			}
+
+			gotPath, gotErr := getFullPath(os.DirFS(wd), tc.path)
+			if tc.expErr != nil {
+				if gotErr == nil {
+					t.Fatalf("Expected error %q but got nil", tc.expErr.Error())
+				}
+
+				if !errors.Is(err, tc.expErr) {
+					t.Fatalf("Expected error %q but got %q", tc.expErr.Error(), err.Error())
+				}
+
+				return
+			}
+
+			if gotErr != nil {
+				t.Errorf("Unexpected error occurred: %v", gotErr)
+			}
+
+			if gotPath != tc.expOut {
+				t.Errorf("Expected %q but got %q", tc.expOut, gotPath)
+			}
+		})
+	}
+}
